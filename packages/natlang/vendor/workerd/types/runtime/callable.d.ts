@@ -8,9 +8,9 @@ export declare const NATLANG_CALLABLE: unique symbol;
 export type CallableMeta = {
     definition: CallableDefinition;
     kind: 'named' | 'inline';
-    /** Frame in which an inline callable was created; a fallback when no frame propagates to the call. */
+    /** Lexical creation frame of an inline callable; ambient calls cannot replace its authority. */
     created?: Frame;
-    /** A frame the callable always runs in (callables handed to an interpreter session's eval). */
+    /** Lexical task and capability owner; dynamic caller ancestry is resolved for each invocation. */
     bound?: Frame;
     /** Capture cells an inline or soft function was created with, kept so rebinding preserves them. */
     captures?: Record<string, CaptureCell>;

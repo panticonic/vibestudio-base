@@ -116,6 +116,23 @@ export type NativeRuntimeOptions = {
 /** A return_result value that is a single `${...}` placeholder: return_result sends its value as written. */
 export declare const PLACEHOLDER_VALUE: RegExp;
 export declare const PLACEHOLDER_ADVICE: string;
+/**
+ * The standard library's combinators as eval built-ins (2026-11-25): a call composes its judgments with them by name,
+ * and they run in the call's frame, so their child calls nest under it in `std:<name>` spans. The two workspace
+ * combinators take a folder and are offered where the call has one. NATLANG_EVAL_STD=0 turns them off (eval then has
+ * only the built-ins it had before).
+ */
+export declare const EVAL_STD_COMBINATORS: readonly ["semanticMap", "semanticFilter", "semanticPartition", "semanticReduce", "semanticMatch", "semanticRank", "semanticRepair", "fixedPoint", "semanticMerge", "escalate", "withContext", "compileRule"];
+export declare const EVAL_STD_FOLDER_COMBINATORS: readonly ["proposeAndVerify", "branchAndSelect"];
+/** Whether eval offers the std combinators (default on; NATLANG_EVAL_STD=0, off or false turns them off). */
+export declare function evalStdEnabled(): boolean;
+/**
+ * Eval locals keep JavaScript object identity across evals (one copy of the whole scope, input parts mapped back to the
+ * host's values, coerced locals keeping their objects); NATLANG_EVAL_IDENTITY=0 copies each value on its own as before.
+ */
+export declare function evalIdentityEnabled(): boolean;
+/** read_code documentation of the std built-ins (the declarations are those of `@natlang/node/std`). */
+export declare const STD_BUILT_IN_DOCS: Record<string, string>;
 export declare const BUILT_IN_DOCS: Record<string, string>;
 /**
  * The scope type of a portable value, as a local holding it is declared. A list or record that holds a live value is one
@@ -319,7 +336,6 @@ export declare class TranscriptView {
 export declare class NativeSession {
     readonly runtime: NativeRuntime;
     readonly lam: LambdaNode;
-    readonly env: TypeEnv;
     /** Program guidance written from its text, to be primed in this call once its opening exists (agent.ts). */
     guidancePrime?: {
         placeholder: string;
@@ -366,7 +382,22 @@ export declare class NativeSession {
     /** Exact native tool schemas offered by NativeToolAgent for this call's current turn. */
     private readonly offeredToolDocs;
     private activeScopeLocals?;
+    /** The std built-ins the eval being compiled has (hooks.ts evalDeclarations types them from `@natlang/node/std`). */
+    evalStdBindings: readonly string[];
+    /** The call's type environment; a recursive type an eval declares joins it (bindLocalTypeNames). */
+    env: TypeEnv;
     constructor(runtime: NativeRuntime, lam: LambdaNode, env: TypeEnv);
+    /**
+     * An eval's types are inlined into a local's type where it is used; a recursive one (`type Node = { kids: Node[] }`)
+     * cannot be, so the names a type still refers to join this call's type environment, with the local types they reach.
+     */
+    private bindLocalTypeNames;
+    /** The standard library eval's std built-ins come from: the platform's instance, unless NATLANG_EVAL_STD turns them off. */
+    private stdLibrary;
+    /** The std combinators this call offers in eval: all of them, the workspace ones where the call has a folder. */
+    private stdCombinators;
+    /** The std combinators an eval of `source` has: those no input, local, function, service, capture or declaration of it takes. */
+    private evalStdNames;
     executionOccurrence(): import('../contracts.js').NativeExecutionOccurrence | undefined;
     /**
      * Records where the strings of this call's `Untrusted<...>` arguments and captured variables came from, so the renderer

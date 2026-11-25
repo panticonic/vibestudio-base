@@ -1,3 +1,5 @@
+/** The helpers the crisp prelude (prelude.js) defines in every eval compiled here; `_`-prefixed ones are internal. */
+export declare const PRELUDE_BINDINGS: readonly string[];
 export type EvalCompileOptions = {
     /** The code is the body of a function (it may `return`) rather than a program whose completion value is its result. */
     body: boolean;

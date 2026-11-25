@@ -38,6 +38,9 @@ export type Frame = Readonly<{
     nlActive?: ActiveCall;
     /** Call ID of the natlang invocation that created this frame, if any. */
     parentCallId?: string;
+    /** In a std combinator's span (parentCallId is the span's), the call that ran the combinator: calls bound to that
+     * call's frame (eval's callables and inline nl functions) started here nest under the span (callable.ts startCall). */
+    spanOf?: string;
     programOwner?: string;
     /** Whether that invocation is an inline `nl` function: a judgment eval code handed over. */
     inline?: boolean;
@@ -147,6 +150,12 @@ export declare class NatlangRecursionError extends Error {
     readonly chain: readonly string[];
     constructor(definitionId: string, chain: readonly string[], label?: string, message?: string);
 }
+/**
+ * The error of a self-call on nothing smaller, for eval and callable-folder functions and `.nl` functions alike. A walk
+ * over a graph (claims citing claims, prerequisites) grows a visited path, which is not smaller: the shrinking form of
+ * the same walk passes the nodes not yet visited (authored wave 1, 2026-11-25).
+ */
+export declare const noSmallerArgument: (name: string) => string;
 /** The readable name in an authored callable's guard ID (`prefix#name@position`). */
 export declare const guardName: (id: string) => string;
 /**

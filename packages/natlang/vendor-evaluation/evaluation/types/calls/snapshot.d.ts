@@ -4,6 +4,10 @@ export type Snapshot = {
     ref: ValueRef;
     text?: string;
 };
+/** Read only data properties. Observation must never execute application getters. */
+export declare function dataEntries(value: object): [string, unknown][];
+/** Realm-neutral plain-data classification without Symbol.toStringTag or constructor access. */
+export declare function isPlainDataObject(value: unknown): value is Record<string, unknown>;
 /** Snapshot `value` for a record: exact JSON within `maxBytes`, else what can be said of it. */
 export declare function snapshot(value: unknown, maxBytes: number, excluded?: boolean): Snapshot;
 export declare const VALUE_CLASSES: Record<string, RegExp>;

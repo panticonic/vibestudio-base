@@ -364,6 +364,10 @@ export declare class NatlangTask {
     endInvocation(callId: string): void;
     isInvocationActive(callId: string): boolean;
     isInvocationRecorded(callId: string): boolean;
+    private readonly closureTraceParents;
+    /** Associations are keyed by actual parent identity, never a mutable ambient parent slot. */
+    retainClosureTraceParent(parent: Frame): void;
+    private traceParentFor;
     isExternalTraceParent(callId: string): boolean;
     activeTraceParent(callId: string): Frame | undefined;
     /** Allocate a task-wide order at the actual service request boundary. */
@@ -447,8 +451,7 @@ export declare class NatlangRuntime {
      * is false.
      */
     decide<A extends unknown[], T>(fn: (...args: A) => Promise<T>, ...args: A): Promise<Decision<T>>;
-    /** Bind a callback to the current task and scope. Bind at task scope to use it after an invocation ends;
-     * an invocation-bound callback cannot retain that invocation's expired services or trace authority. */
+    /** Retain lexical task authority while resolving causal ancestry at each callback invocation. */
     bind<F extends (...args: never[]) => unknown>(fn: F): F;
     close(): void;
 }
@@ -460,6 +463,11 @@ export declare function createNatlangRuntime(options: NatlangRuntimeOptions & {
  * host, decide(...) in eval. Without a scored readout the answer has probability 1 and `scored` is false.
  */
 export declare function decideInFrame<A extends unknown[], T>(frame: Frame, fn: (...args: A) => Promise<T>, args: A): Promise<Decision<T>>;
+/** Resolve a closure's lexical authority separately from its current causal caller.
+ * A completed creator is not an active parent. An authenticated external caller
+ * lends causal identity and graph ownership, never lexical service grants.
+ */
+export declare function resolveBoundFrame(owner: Frame): Frame;
 /** Resolve the frame for a natlang call: the propagated frame, the creation frame, or the only active task. */
 export declare function resolveFrame(created?: Frame): Frame;
 export { recordingServices } from '../native/effects.js';

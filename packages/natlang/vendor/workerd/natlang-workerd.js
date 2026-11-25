@@ -702,7 +702,7 @@ declare var FinalizationRegistry: FinalizationRegistryConstructor;
 });
 
 // src/compiler/intrinsics.ts
-var NATLANG_COMPILE_VERSION, ITERATE_ON_SIGNATURE, RESERVED_CALLABLE_PROPERTIES, camelCaseName, invalidNameMessage, reservedNameMessage, NEURALESE_TYPE_DECLARATION, NEURALESE_TYPE_DOCUMENTATION, DECLARATIONS, FUNCTIONS, READ_FUNCTION, STRING_NEURALESE_CONCAT, INTRINSICS_GLOBAL_DTS, PLUGGABLE_MODULE_DTS, INTRINSICS_MODULE_DTS, STD_MODULE_DTS, STD_MODULE_FILE, STD_SPECIFIERS, INTRINSICS_FILE, SURFACE_MODULE_FILE;
+var NATLANG_COMPILE_VERSION, ITERATE_ON_SIGNATURE, RESERVED_CALLABLE_PROPERTIES, camelCaseName, invalidNameMessage, JS_RESERVED_WORDS, reservedWordMessage, reservedNameMessage, NEURALESE_TYPE_DECLARATION, NEURALESE_TYPE_DOCUMENTATION, DECLARATIONS, FUNCTIONS, READ_FUNCTION, STRING_NEURALESE_CONCAT, INTRINSICS_GLOBAL_DTS, PLUGGABLE_MODULE_DTS, INTRINSICS_MODULE_DTS, STD_MODULE_DTS, STD_MODULE_FILE, STD_SPECIFIERS, INTRINSICS_FILE, SURFACE_MODULE_FILE;
 var init_intrinsics = __esm({
   "src/compiler/intrinsics.ts"() {
     "use strict";
@@ -743,6 +743,57 @@ var init_intrinsics = __esm({
       return /^[A-Za-z_$]/.test(joined) ? joined : `_${joined}`;
     };
     invalidNameMessage = (name) => `${JSON.stringify(name)} is not a valid callable name; name it with letters, digits, _ and $, such as ${JSON.stringify(camelCaseName(name) || "stage")}.`;
+    JS_RESERVED_WORDS = /* @__PURE__ */ new Set([
+      "arguments",
+      "await",
+      "break",
+      "case",
+      "catch",
+      "class",
+      "const",
+      "continue",
+      "debugger",
+      "default",
+      "delete",
+      "do",
+      "else",
+      "enum",
+      "eval",
+      "export",
+      "extends",
+      "false",
+      "finally",
+      "for",
+      "function",
+      "if",
+      "implements",
+      "import",
+      "in",
+      "instanceof",
+      "interface",
+      "let",
+      "new",
+      "null",
+      "package",
+      "private",
+      "protected",
+      "public",
+      "return",
+      "static",
+      "super",
+      "switch",
+      "this",
+      "throw",
+      "true",
+      "try",
+      "typeof",
+      "var",
+      "void",
+      "while",
+      "with",
+      "yield"
+    ]);
+    reservedWordMessage = (name, what = "a callable name") => `${JSON.stringify(name)} is a reserved word in JavaScript, so it cannot be ${what}; rename it, for example to ${JSON.stringify(name + "Item")}.`;
     reservedNameMessage = (name, what = "callable name") => `${JSON.stringify(name)} is a property every function already has, so it cannot be a ${what}; rename it, for example to ${JSON.stringify(name + "Step")}.`;
     NEURALESE_TYPE_DECLARATION = String.raw`
 /** The dialect a Neuralese<T> without a second argument names; the program's configuration binds it. */
@@ -213960,7 +214011,7 @@ function guard(id3, fn, args = [], label) {
     descent = descend(same, args);
     if (!descent.length) {
       const name = label ?? guardName(id3);
-      throw new NatlangRecursionError(id3, frame.chain, name, `\`${name}\` called itself without a smaller argument. Recurse only on a part of the input, a shorter array or string, or a smaller non-negative integer; otherwise use a bounded loop or iterateOn.`);
+      throw new NatlangRecursionError(id3, frame.chain, name, noSmallerArgument(name));
     }
   }
   return runInFrame({ ...frame, active: { id: id3, args, parent: frame.active, same, descent } }, fn);
@@ -214057,7 +214108,7 @@ function partOf(call, position, part) {
   }
   return false;
 }
-var MAX_AD_HOC_NL_DEPTH, canGenerateNl, racedCalls, startedCalls, SlotContextStore, stores, entered, sequence, NatlangContextError, NatlangRecursionError, guardName, isObject;
+var MAX_AD_HOC_NL_DEPTH, canGenerateNl, racedCalls, startedCalls, SlotContextStore, stores, entered, sequence, NatlangContextError, NatlangRecursionError, noSmallerArgument, guardName, isObject;
 var init_context = __esm({
   "src/runtime/context.ts"() {
     "use strict";
@@ -214117,6 +214168,7 @@ var init_context = __esm({
       definitionId;
       chain;
     };
+    noSmallerArgument = (name) => `\`${name}\` called itself without a smaller argument. Recurse only on a part of the input, a shorter array or string, or a smaller non-negative integer (to walk a graph, pass the nodes not yet visited and recurse on fewer of them); otherwise use a bounded loop or iterateOn.`;
     guardName = (id3) => /#([^#@]+)@\d+$/.exec(id3)?.[1] ?? id3;
     isObject = (value) => !!value && (typeof value === "object" || typeof value === "function");
   }
@@ -214486,27 +214538,49 @@ var init_graph_custody = __esm({
 });
 
 // src/calls/snapshot.ts
+function dataEntries(value) {
+  return Object.entries(Object.getOwnPropertyDescriptors(value)).filter(([, descriptor2]) => descriptor2.enumerable && Object.hasOwn(descriptor2, "value")).map(([key, descriptor2]) => [key, descriptor2.value]);
+}
 function plainPrototype(prototype) {
   if (prototype === null || prototype === Object.prototype) return true;
   if (Object.getPrototypeOf(prototype) !== null) return false;
   const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
   return typeof constructor === "function" && Object.getOwnPropertyDescriptor(constructor, "prototype")?.value === prototype && Function.prototype.toString.call(constructor) === objectConstructorSource;
 }
-function portable(value, seen, depth2) {
-  if (depth2 > 64) return false;
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value !== "object" || seen.has(value)) return false;
+function isPlainDataObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && plainPrototype(Object.getPrototypeOf(value));
+}
+function portableText(value, seen, depth2) {
+  if (depth2 > 64) return void 0;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") return Number.isFinite(value) ? JSON.stringify(value) : void 0;
+  if (typeof value !== "object" || seen.has(value)) return void 0;
   seen.add(value);
   try {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
     if (Array.isArray(value)) {
-      if (Object.keys(value).length !== value.length) return false;
-      for (let index = 0; index < value.length; index++)
-        if (!Object.hasOwn(value, index) || !portable(value[index], seen, depth2 + 1)) return false;
-      return true;
+      const length = descriptors.length?.value;
+      if (typeof length !== "number" || Object.values(descriptors).filter((item) => item.enumerable).length !== length) return void 0;
+      const items2 = [];
+      for (let index = 0; index < length; index++) {
+        const item = descriptors[String(index)];
+        if (!item || !Object.hasOwn(item, "value")) return void 0;
+        const text3 = portableText(item.value, seen, depth2 + 1);
+        if (text3 === void 0) return void 0;
+        items2.push(text3);
+      }
+      return `[${items2.join(",")}]`;
     }
-    if (!plainPrototype(Object.getPrototypeOf(value))) return false;
-    return Object.entries(value).every(([, item]) => item !== void 0 && portable(item, seen, depth2 + 1));
+    if (!plainPrototype(Object.getPrototypeOf(value))) return void 0;
+    const items = [];
+    for (const [key, item] of Object.entries(descriptors)) {
+      if (!item.enumerable) continue;
+      if (!Object.hasOwn(item, "value")) return void 0;
+      const text3 = portableText(item.value, seen, depth2 + 1);
+      if (text3 === void 0) return void 0;
+      items.push(`${JSON.stringify(key)}:${text3}`);
+    }
+    return `{${items.join(",")}}`;
   } finally {
     seen.delete(value);
   }
@@ -214514,15 +214588,12 @@ function portable(value, seen, depth2) {
 function snapshot(value, maxBytes, excluded2 = false) {
   if (excluded2) return { ref: { complete: false, reason: "excluded", type: typeLabel(value) } };
   if (value === void 0) value = null;
-  if (!portable(value, /* @__PURE__ */ new Set(), 0)) {
-    let shown;
-    try {
-      shown = preview(String(value));
-    } catch {
-    }
-    return { ref: { complete: false, reason: "nonportable", type: typeLabel(value), ...shown ? { preview: shown } : {} } };
+  let text3;
+  try {
+    text3 = portableText(value, /* @__PURE__ */ new Set(), 0);
+  } catch {
   }
-  const text3 = JSON.stringify(value);
+  if (text3 === void 0) return { ref: { complete: false, reason: "nonportable", type: typeLabel(value) } };
   const bytes2 = new TextEncoder().encode(text3).byteLength;
   const hash2 = hexDigest(text3);
   if (bytes2 > maxBytes) return { ref: { complete: false, reason: "oversize", hash: hash2, bytes: bytes2, type: typeLabel(value), preview: preview(text3) } };
@@ -214559,7 +214630,7 @@ function inputFeatures(inputs) {
     }
     if (Array.isArray(value)) {
       put(`arr:${path2}`, value.length);
-      value.slice(0, 3).forEach((item, index) => visit(item, `${path2}[${index}]`, depth2 + 1));
+      for (const [index, item] of dataEntries(value)) if (/^(0|[1-9]\d*)$/.test(index) && Number(index) < 3) visit(item, `${path2}[${index}]`, depth2 + 1);
       return;
     }
     if (typeof value === "object") {
@@ -214569,11 +214640,11 @@ function inputFeatures(inputs) {
         return;
       }
       put(`keys:${path2}`, Object.keys(value).sort().join(","));
-      for (const [key, item] of Object.entries(value))
+      for (const [key, item] of dataEntries(value))
         visit(item, /^[A-Za-z_$][\w$]*$/.test(key) ? `${path2}.${key}` : `${path2}[${JSON.stringify(key)}]`, depth2 + 1);
     }
   };
-  for (const [name, value] of Object.entries(inputs)) visit(value, name, 0);
+  for (const [name, value] of dataEntries(inputs)) visit(value, name, 0);
   return out;
 }
 var typeLabel, objectConstructorSource, preview, MAX_FEATURES, MAX_TOKENS_PER_STRING, CATEGORICAL_CHARS, VALUE_CLASSES;
@@ -214583,11 +214654,11 @@ var init_snapshot = __esm({
     init_define_NATLANG_TS_LIBS();
     init_hash();
     typeLabel = (value) => {
-      if (value === null) return "null";
-      if (Array.isArray(value)) return "array";
-      if (typeof value !== "object") return typeof value;
-      const name = value.constructor?.name;
-      return name && name !== "Object" ? name : "object";
+      try {
+        return value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+      } catch {
+        return typeof value;
+      }
     };
     objectConstructorSource = Function.prototype.toString.call(Object);
     preview = (text3) => text3.length > 200 ? `${text3.slice(0, 200)}\u2026` : text3;
@@ -214624,14 +214695,14 @@ function inputLeaves(inputs) {
       return;
     }
     if (Array.isArray(value)) {
-      value.slice(0, 50).forEach((item, index) => visit(item, `${path2}[${index}]`, depth2 + 1));
+      for (const [index, item] of dataEntries(value)) if (/^(0|[1-9]\d*)$/.test(index) && Number(index) < 50) visit(item, `${path2}[${index}]`, depth2 + 1);
       return;
     }
-    if (isPlainObject(value))
-      for (const [key, item] of Object.entries(value).slice(0, 100))
+    if (isPlainDataObject(value))
+      for (const [key, item] of dataEntries(value).slice(0, 100))
         visit(item, /^[A-Za-z_$][\w$]*$/.test(key) ? `${path2}.${key}` : `${path2}[${JSON.stringify(key)}]`, depth2 + 1);
   };
-  for (const [name, value] of Object.entries(inputs)) visit(value, name, 0);
+  for (const [name, value] of dataEntries(inputs)) visit(value, name, 0);
   return leaves;
 }
 function replaceParts(text3, leaves) {
@@ -214710,7 +214781,7 @@ var init_normalize = __esm({
     init_define_NATLANG_TS_LIBS();
     import_typescript3 = __toESM(require_typescript(), 1);
     init_hash();
-    init_plain_object();
+    init_snapshot();
     DECLARING = /* @__PURE__ */ new Set([import_typescript3.default.SyntaxKind.ConstKeyword, import_typescript3.default.SyntaxKind.LetKeyword, import_typescript3.default.SyntaxKind.VarKeyword, import_typescript3.default.SyntaxKind.FunctionKeyword]);
     DROPPED = /* @__PURE__ */ new Set([import_typescript3.default.SyntaxKind.AwaitKeyword, import_typescript3.default.SyntaxKind.ReturnKeyword]);
     TEMPLATE_TEXT = /* @__PURE__ */ new Set([
@@ -214929,7 +215000,10 @@ var init_recorder = __esm({
       }
       /** While the call runs, write its trace events so far every `intervalMs`, so a long call can be inspected live. */
       watch(events, intervalMs = 3e4) {
+        if (this.watcher) clearInterval(this.watcher);
+        this.watcher = void 0;
         this.eventSource = events;
+        this.backgroundCheckpoint();
         if (!this.store.progress) return;
         let written = 0;
         this.watcher = setInterval(() => {
@@ -214952,10 +215026,12 @@ var init_recorder = __esm({
       }
       setInputs(values, captures = {}) {
         const definition = { name: this.base.definition.name, source: this.base.definition.source };
-        this.hostInputs = { ...captures, ...values };
-        this.inputs = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, this.ref(value, excluded(this.base.exclude, definition, name))]));
-        this.captures = Object.fromEntries(Object.entries(captures).map(([name, value]) => [name, this.ref(value, excluded(this.base.exclude, definition, name))]));
-        const visible = Object.fromEntries(Object.entries(this.hostInputs).filter(([name]) => !excluded(this.base.exclude, definition, name)));
+        const observedDescriptors = { ...Object.getOwnPropertyDescriptors(captures), ...Object.getOwnPropertyDescriptors(values) };
+        this.hostInputs = Object.fromEntries(Object.entries(observedDescriptors).filter(([, item]) => item.enumerable && Object.hasOwn(item, "value")).map(([name, item]) => [name, item.value]));
+        const refs = (record3) => Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(record3)).filter(([, item]) => item.enumerable).map(([name, item]) => [name, Object.hasOwn(item, "value") ? this.ref(item.value, excluded(this.base.exclude, definition, name)) : { complete: false, reason: excluded(this.base.exclude, definition, name) ? "excluded" : "nonportable" }]));
+        this.inputs = refs(values);
+        this.captures = refs(captures);
+        const visible = Object.fromEntries(dataEntries(this.hostInputs).filter(([name]) => !excluded(this.base.exclude, definition, name)));
         try {
           this.features = inputFeatures(visible);
         } catch {
@@ -215950,7 +216026,7 @@ Before returning, check that each value answers the requested predicate and matc
     HANDOVER_NOTE_CLOSE = '\n\nContinue from where this note leaves off. Look into the history only when something specific matters for the next step, and then search it (transcript.search("\u2026"), then transcript.entry(n) for a match) instead of reading it through.';
     LAST_TURN_NOTICE = '\n\n[This is your last turn in this call: call return_result with status "success" and the result, or status "blocked" with what is missing, or status "failed" with why.]';
     COMPACTED_RESULT = "Compacted: older outputs and code are in transcript, and your note is kept after the instructions.";
-    viewNote = (holder) => `  // view of the value; ${holder} holds all of it`;
+    viewNote = (holder) => holder ? `  // view of the value; ${holder} holds all of it` : "  // view of the whole value; its text follows as far as it fits";
     listingViewInstructions = (name, type, instructions) => `The view is shown in the opening listing of a call that receives the value as ${name} (${type}). The call reads ${name} itself for exact details, so keep the view short: what the value is, how it is organised, and what in it bears on the call's instructions, so that the call knows what to look up. The call's instructions:
 ${instructions}`;
   }
@@ -215992,11 +216068,12 @@ function readTypeAliases(source2) {
   if (errors.length) throw new Error(`type alias syntax: ${errors.map((item) => import_typescript5.default.flattenDiagnosticMessageText(item.messageText, "\n")).join("; ")}`);
   const result = {};
   for (const statement of file.statements) {
-    if (!import_typescript5.default.isTypeAliasDeclaration(statement) || statement.typeParameters?.length) continue;
+    const body = import_typescript5.default.isTypeAliasDeclaration(statement) && !statement.typeParameters?.length ? statement.type.getText(file) : import_typescript5.default.isInterfaceDeclaration(statement) ? interfaceRecord(statement, file) : void 0;
+    if (body === void 0) continue;
     const name = statement.name.text;
     if (Object.hasOwn(result, name)) throw new Error(`duplicate type alias ${name}`);
     const doc = import_typescript5.default.getJSDocCommentsAndTags(statement).filter(import_typescript5.default.isJSDoc).map((item) => import_typescript5.default.getTextOfJSDocComment(item.comment) ?? "").join(" ").replace(/\s+/g, " ").trim();
-    result[name] = (doc ? `/** ${doc.replace(/\*\//g, "* /")} */ ` : "") + statement.type.getText(file);
+    result[name] = (doc ? `/** ${doc.replace(/\*\//g, "* /")} */ ` : "") + body;
   }
   return result;
 }
@@ -216004,6 +216081,18 @@ function aliasDeclaration(name, definition) {
   const doc = /^(\/\*\*[^]*?\*\/)\s*/.exec(definition);
   return doc ? `${doc[1]}
 type ${name} = ${definition.slice(doc[0].length)};` : `type ${name} = ${definition};`;
+}
+function interfaceRecord(statement, file) {
+  if (statement.typeParameters?.length || !statement.members.every((member) => import_typescript5.default.isPropertySignature(member) && !!member.type && (import_typescript5.default.isIdentifier(member.name) || import_typescript5.default.isStringLiteral(member.name)))) return void 0;
+  const bases = [];
+  for (const clause of statement.heritageClauses ?? []) for (const base of clause.types) {
+    if (!import_typescript5.default.isIdentifier(base.expression) || base.typeArguments?.length) return void 0;
+    bases.push(base.expression.text);
+  }
+  const text3 = file.text, open = statement.members.pos - 1;
+  if (text3[open] !== "{") return void 0;
+  const record3 = text3.slice(open, statement.end).trim();
+  return [...bases, record3].join(" & ");
 }
 var import_typescript5;
 var init_type_aliases = __esm({
@@ -216620,6 +216709,28 @@ function fromTypeScript(diagnostic, file) {
     ...detail ? { detail } : {}
   };
 }
+function literalInitializer(expression) {
+  if (import_typescript7.default.isParenthesizedExpression(expression)) return literalInitializer(expression.expression);
+  if (import_typescript7.default.isConditionalExpression(expression)) return literalInitializer(expression.whenTrue) && literalInitializer(expression.whenFalse);
+  return import_typescript7.default.isLiteralExpression(expression) || import_typescript7.default.isNoSubstitutionTemplateLiteral(expression) || expression.kind === import_typescript7.default.SyntaxKind.TrueKeyword || expression.kind === import_typescript7.default.SyntaxKind.FalseKeyword || import_typescript7.default.isPrefixUnaryExpression(expression) && import_typescript7.default.isNumericLiteral(expression.operand);
+}
+function shownBindingType(checker, type, declaration, initializer) {
+  if (globalThis.process?.env?.NATLANG_LITERAL_CAPTURE_TYPES === "1") return type;
+  const source2 = initializer ?? (declaration && import_typescript7.default.isVariableDeclaration(declaration) && !declaration.type ? declaration.initializer : void 0);
+  if (!source2 || !literalInitializer(source2)) return type;
+  return type.flags & (import_typescript7.default.TypeFlags.Literal | import_typescript7.default.TypeFlags.Union) && !(type.flags & import_typescript7.default.TypeFlags.EnumLiteral) ? checker.getBaseTypeOfLiteralType(type) : type;
+}
+function wordCaptureWarning(name, parts) {
+  if (globalThis.process?.env?.NATLANG_WORD_CAPTURE_LINT === "0") return;
+  let phrase;
+  for (const part of parts) for (const match2 of part.text.matchAll(IDENTIFIER_TOKEN)) {
+    if (match2[0] !== name) continue;
+    const before = part.text.slice(0, match2.index), after = part.text.slice(match2.index + name.length);
+    if (before.endsWith("\\`") || /^(?:\.[A-Za-z_$]|\[)/.test(after) || !VERB_POSITION.test(before)) return;
+    phrase ??= `${before.split(/\s+/).slice(-3).join(" ").trimStart()}${name}`;
+  }
+  return phrase && `\`${name}\` is captured because the instructions use the word "${name}" ("${phrase}"), so this call also receives the variable ${name}. If the call needs that variable, write it as \\\`${name}\\\`; if not, reword the instructions or list exactly what the call sees with nl.with({ \u2026 }).`;
+}
 function softBodyOf(template) {
   if (!import_typescript7.default.isTemplateExpression(template) || template.templateSpans.length !== 1 || template.head.text !== "" || template.templateSpans[0].literal.text !== "") return;
   const expression = template.templateSpans[0].expression;
@@ -217195,8 +217306,14 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         const symbol = checker.getSymbolAtLocation(expression);
         declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
       }
-      const type = checker.getTypeAtLocation(expression);
-      actualTypes.set(name, type);
+      actualTypes.set(name, checker.getTypeAtLocation(expression));
+      const valueSymbol = import_typescript7.default.isShorthandPropertyAssignment(property) ? checker.getShorthandAssignmentValueSymbol(property) : import_typescript7.default.isIdentifier(expression) ? checker.getSymbolAtLocation(expression) : void 0;
+      const type = shownBindingType(
+        checker,
+        checker.getTypeAtLocation(expression),
+        valueSymbol?.valueDeclaration ?? valueSymbol?.declarations?.[0],
+        import_typescript7.default.isIdentifier(expression) ? void 0 : expression
+      );
       let described;
       try {
         described = describeTarget(program, checker, type, { allowHost: true, location: node });
@@ -217382,7 +217499,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     for (const [name, offset] of [...mentions2].sort((a, b) => a[1] - b[1])) {
       const symbol = candidates.get(name);
       const declaration = symbol.valueDeclaration ?? symbol.declarations[0];
-      const type = checker.getTypeOfSymbolAtLocation(symbol, node);
+      const type = shownBindingType(checker, checker.getTypeOfSymbolAtLocation(symbol, node), declaration);
       let described;
       try {
         described = describeTarget(program, checker, type, { allowHost: true, location: node });
@@ -217393,6 +217510,13 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       const mutable = isMutableBinding(declaration);
       const source2 = options.classify?.(declaration) ?? (described.host ? "handle" : import_typescript7.default.isParameter(declaration) ? "input" : isTopLevel(declaration) ? "local" : "block");
       captures.push({ name, type: described, mutable, source: source2, mentionSpan: offset });
+      const prose = slotCaptures.has(name) ? void 0 : wordCaptureWarning(name, literalParts);
+      if (prose) diagnostics.push({
+        ...spanOf(node, displayPath, offset, offset + name.length),
+        code: "nl-word-capture",
+        severity: "warning",
+        message: prose
+      });
     }
     let adaptation;
     if (options.authored) {
@@ -217657,7 +217781,7 @@ function isTopLevel(declaration) {
   }
   return true;
 }
-var import_typescript7, IDENTIFIER_TOKEN, BACKTICK_MENTION, IDENTIFIER_NAME, isTextType, unwrapParentheses;
+var import_typescript7, VERB_POSITION, IDENTIFIER_TOKEN, BACKTICK_MENTION, IDENTIFIER_NAME, isTextType, unwrapParentheses;
 var init_inline = __esm({
   "src/compiler/inline.ts"() {
     "use strict";
@@ -217667,6 +217791,7 @@ var init_inline = __esm({
     init_holes();
     init_targets();
     init_neuralese();
+    VERB_POSITION = /(?:^|[^A-Za-z0-9_$])(?:am|is|are|was|were|be|been|being|not|can|could|will|would|shall|should|must|may|might|has|have|had|do|does|did|get|gets|got|gotten)\s+$/i;
     IDENTIFIER_TOKEN = /(?<![A-Za-z0-9_$])[A-Za-z_$][A-Za-z0-9_$]*(?![A-Za-z0-9_$])/g;
     BACKTICK_MENTION = /\\`([A-Za-z_$][A-Za-z0-9_$]*)\\`/g;
     IDENTIFIER_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -220129,7 +220254,15 @@ function readNatlangFrontmatter(source2) {
 }
 function checkName(path2, name) {
   if (!IDENTIFIER3.test(name)) throw new NatlangSourceError(path2, invalidNameMessage(name));
+  if (JS_RESERVED_WORDS.has(name)) throw new NatlangSourceError(path2, reservedWordMessage(name));
   if (RESERVED_CALLABLE_PROPERTIES.has(name)) throw new NatlangSourceError(path2, reservedNameMessage(name));
+}
+function checkArgumentNames(path2, args, text3) {
+  for (const raw of Object.keys(args)) {
+    const name = raw.replace(/\?$/, ""), line = frontmatterLine(text3, "args", name);
+    if (!IDENTIFIER3.test(name)) throw new NatlangSourceError(path2, `${JSON.stringify(name)} is not a valid argument name; name it with letters, digits, _ and $, such as ${JSON.stringify(camelCaseName(name) || "input")}.`, line);
+    if (JS_RESERVED_WORDS.has(name)) throw new NatlangSourceError(path2, reservedWordMessage(name, "an argument name"), line);
+  }
 }
 function helperDeclaring(path2, name, files2) {
   if (!files2) return;
@@ -220200,6 +220333,7 @@ function parseNatlang(path2, text3, inherited, files2) {
   checkName(path2, name);
   const types3 = { ...inherited, ...meta.types ?? {} };
   const args = meta.args ?? {};
+  if (args && typeof args === "object" && !Array.isArray(args)) checkArgumentNames(path2, args, text3);
   let generic;
   try {
     generic = genericResult(meta.generic, meta.returns);
@@ -222467,11 +222601,14 @@ function scopeDeclarations(scope, iterationHelper) {
     else lines.push(`declare const ${name}: any;`);
   }
   for (const name of scope.opaque ?? []) lines.push(`declare const ${name}: any;`);
-  const explicit = new Set([...scope.inputs, ...scope.locals, ...scope.captures, ...scope.imports].map((item) => item.name).concat(scope.services ?? [], scope.opaque ?? []));
+  const taken = new Set([...scope.inputs, ...scope.locals, ...scope.captures, ...scope.imports].map((item) => item.name).concat(scope.services ?? [], scope.opaque ?? []));
+  const std = (scope.std ?? []).filter((name) => /^[A-Za-z_$][\w$]*$/.test(name) && !taken.has(name));
+  for (const name of std) lines.push(`declare const ${name}: typeof import(${JSON.stringify(STD_MODULE_FILE.replace(/\.d\.ts$/, ""))}).${name};`);
+  const explicit = /* @__PURE__ */ new Set([...taken, ...std]);
   for (const name of scope.globals ?? []) if (/^[A-Za-z_$][\w$]*$/.test(name) && !explicit.has(name) && !standardValueBindings().has(name))
     lines.push(`declare const ${name}: any;`);
   if (iterationHelper) lines.push(`declare function ${iterationHelper}${ITERATE_ON_SIGNATURE};`);
-  const named2 = new Set([...scope.inputs, ...scope.locals, ...scope.captures, ...scope.imports].map((item) => item.name).concat(scope.services ?? [], scope.opaque ?? []));
+  const named2 = /* @__PURE__ */ new Set([...explicit]);
   if (!named2.has("decide")) lines.push("declare function decide<A extends unknown[], T>(fn: (...args: A) => Promise<T>, ...args: A): Promise<{ value: T; probabilities: { value: T; probability: number }[]; confidence: number; scored: boolean }>;");
   lines.push(`declare function ${NEURALESE_LITERAL_INTRINSIC}<T>(id: string, constant?: true, sourceOccurrence?: string): T;`);
   lines.push(`declare namespace ${NEURALESE_LITERAL_INTRINSIC} { function body(id: string, constant?: true, sourceOccurrence?: string): NeuraleseBody; }`);
@@ -223730,6 +223867,13 @@ var init_surface = __esm({
 function hasBuiltinModule(platform, specifier) {
   return !!platform.builtinModules && Object.hasOwn(platform.builtinModules, specifier) || shippedModules.has(specifier);
 }
+function stdModule(platform) {
+  for (const specifier of STD_SPECIFIERS) {
+    const factory = platform?.builtinModules && Object.hasOwn(platform.builtinModules, specifier) ? platform.builtinModules[specifier] : shippedModules.get(specifier);
+    if (factory) return factory();
+  }
+  return void 0;
+}
 function builtinModule(platform, specifier) {
   const factory = platform.builtinModules && Object.hasOwn(platform.builtinModules, specifier) ? platform.builtinModules[specifier] : shippedModules.get(specifier);
   if (!factory) throw new ModuleUnavailableError(specifier, "this platform registers no such module");
@@ -224626,6 +224770,237 @@ var init_model_budget = __esm({
   }
 });
 
+// src/native/trace.ts
+function deriveSeed(root2, path2, attempt, purpose, ordinal = 0) {
+  const payload = { attempt, ordinal, path: path2, purpose, root: root2, version: "sha256-json-v1" };
+  const bytes2 = digest(JSON.stringify(payload));
+  let first = 0n;
+  for (const byte of bytes2.slice(0, 8)) first = first << 8n | BigInt(byte);
+  return Number(first % 2n ** 31n);
+}
+function valueType(value) {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "number") return "number";
+  if (typeof value === "string") return "string";
+  if (Array.isArray(value)) return "List";
+  if (value && typeof value === "object") for (const [key, body] of Object.entries(value)) {
+    if (key.startsWith("$") && body && typeof body === "object" && "type" in body)
+      return String(body.type);
+  }
+  return "Record";
+}
+function canonical2(value) {
+  if (Array.isArray(value)) return value.map(canonical2);
+  if (value && typeof value === "object")
+    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, item]) => [key, canonical2(item)]));
+  return value;
+}
+function changes(before, after, path2 = []) {
+  if (before && after && typeof before === "object" && typeof after === "object" && !Array.isArray(before) && !Array.isArray(after)) {
+    const a = before, b = after;
+    return [.../* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)])].sort().flatMap((key) => {
+      if (!(key in a) || !(key in b)) return [{
+        path: [...path2, key],
+        before_present: key in a,
+        after_present: key in b,
+        before: a[key] ?? null,
+        after: b[key] ?? null,
+        type: key in b ? valueType(b[key]) : null
+      }];
+      return changes(a[key], b[key], [...path2, key]);
+    });
+  }
+  if (sameValue(before, after)) return [];
+  return [{ path: path2, before_present: true, after_present: true, before, after, type: valueType(after) }];
+}
+var TRACE_VERSION, sameValue, NativeTraceRecorder;
+var init_trace = __esm({
+  "src/native/trace.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_hash();
+    TRACE_VERSION = "reduction-trace/1";
+    sameValue = (a, b) => JSON.stringify(canonical2(a)) === JSON.stringify(canonical2(b));
+    NativeTraceRecorder = class _NativeTraceRecorder {
+      events = [];
+      started = performance.now();
+      constructor(manifest) {
+        this.emit("manifest", manifest);
+      }
+      /** Open a captured trace for read-only reconstruction and admission checks. */
+      static fromEvents(events) {
+        const trace = new _NativeTraceRecorder({});
+        trace.events.splice(0, trace.events.length, ...structuredClone(events));
+        trace.reconstruct();
+        return trace;
+      }
+      /** Sees each event as it is emitted (live observers); what it throws is ignored. */
+      observer;
+      emit(kind, data = {}) {
+        const event = JSON.parse(JSON.stringify({
+          version: TRACE_VERSION,
+          seq: this.events.length,
+          kind,
+          observed_at: (/* @__PURE__ */ new Date()).toISOString(),
+          elapsed_ms: Math.round(performance.now() - this.started),
+          ...data
+        }));
+        this.events.push(event);
+        if (this.observer) try {
+          this.observer(event);
+        } catch {
+        }
+        return event;
+      }
+      finalState() {
+        const states = this.events.filter((event) => event.kind === "state");
+        if (!states.length) throw new Error("trace has no state");
+        return states.at(-1).value;
+      }
+      coverage() {
+        const states = this.events.filter((event) => event.kind === "state");
+        const incomplete = states.some((event) => /"\$stream"|"\$opaque"/.test(JSON.stringify(event.value)));
+        return {
+          state_reconstructable: states.length > 0,
+          live_source_reconstructable: !incomplete,
+          native_effects_replayable: false,
+          effect_count: this.events.filter((event) => event.kind === "effect").length,
+          mode: "recorded-observations-only"
+        };
+      }
+      replayObservations() {
+        const states = this.events.filter((event) => event.kind === "state");
+        if (states[0]?.phase !== "initial" || states.at(-1)?.phase !== "final")
+          throw new Error("trace lacks complete initial/final observations");
+        return {
+          initial: states[0].value,
+          final: states.at(-1).value,
+          outcome: states.at(-1).outcome,
+          actions: this.events.filter((event) => event.kind === "action"),
+          effects: this.events.filter((event) => event.kind === "effect"),
+          coverage: this.coverage()
+        };
+      }
+      reconstruct() {
+        if (this.events[0]?.kind !== "manifest" || this.events.some((event, index) => event.version !== TRACE_VERSION || event.seq !== index)) throw new Error("unsupported or discontinuous trace");
+        const first = this.events.find((event) => event.kind === "state" && event.phase === "initial");
+        if (!first) throw new Error("trace has no initial state");
+        let current = structuredClone(first.value);
+        for (const event of this.events.filter((event2) => event2.kind === "reduction")) {
+          for (const change of event.changes) {
+            const path2 = change.path;
+            if (!path2.length) {
+              current = structuredClone(change.after);
+              continue;
+            }
+            let target = current;
+            for (const part of path2.slice(0, -1)) target = target[String(part)];
+            if (change.after_present) target[String(path2.at(-1))] = structuredClone(change.after);
+            else delete target[String(path2.at(-1))];
+          }
+        }
+        if (!sameValue(current, this.finalState())) throw new Error("trace reconstruction mismatch");
+        return current;
+      }
+    };
+  }
+});
+
+// src/native/execution-occurrence.ts
+function stableOccurrenceBinding(value) {
+  const normalize2 = (item) => {
+    if (Array.isArray(item)) return item.map(normalize2);
+    if (!item || typeof item !== "object") return item;
+    const record3 = item;
+    if (record3.$live && typeof record3.$live === "object") return { $live: { type: record3.$live.type } };
+    if (record3.$host && typeof record3.$host === "object") return { $host: normalize2(record3.$host) };
+    return Object.fromEntries(Object.keys(record3).sort().map((key) => [key, normalize2(record3[key])]));
+  };
+  return JSON.stringify(normalize2(value));
+}
+function executionOccurrence(input) {
+  const base = {
+    schema: "natlang.execution-occurrence/1",
+    definition_id: input.definitionId,
+    revision: input.revision,
+    context: input.context,
+    signature: input.signature,
+    parent_occurrence_sha256: typeof input.parent?.occurrence_sha256 === "string" ? input.parent.occurrence_sha256 : null,
+    sibling_ordinal: input.ordinal,
+    argument_binding_sha256: input.argumentHash
+  };
+  return { ...base, occurrence_sha256: hexDigest(stableOccurrenceBinding(base)) };
+}
+var occurrenceArgumentHash;
+var init_execution_occurrence = __esm({
+  "src/native/execution-occurrence.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_hash();
+    occurrenceArgumentHash = (value) => hexDigest(stableOccurrenceBinding(value));
+  }
+});
+
+// src/runtime/crisp-trace.ts
+function capturedArgumentBindings(capture) {
+  return Object.fromEntries(Object.entries(capture.inputs).map(([name, ref]) => {
+    const text3 = ref.complete ? capture.blobs.get(ref.hash) : void 0;
+    return [name, text3 === void 0 ? { $unobserved: ref } : JSON.parse(text3)];
+  }));
+}
+function openCrispTrace(input) {
+  const { frame, callId, definition } = input, parent = traceFor(frame.parentCallId);
+  const ordinal = input.ordinal ?? frame.task.reserveExecutionSiblingOrdinal(frame.parentCallId, definition.id);
+  const parentOccurrence = parent?.events.find((e10) => e10.kind === "invocation" && e10.phase === "start" && e10.call_id === frame.parentCallId)?.native_occurrence;
+  const occurrence = executionOccurrence({ definitionId: definition.id, revision: definition.revision, context: FILE_CONTEXT, signature: input.signature, parent: parentOccurrence, ordinal, argumentHash: occurrenceArgumentHash(input.arguments) });
+  const trace = new NativeTraceRecorder({
+    run_id: callId,
+    parent_call_id: frame.parentCallId ?? null,
+    task_id: frame.task.id,
+    definition_id: definition.id,
+    definition_name: definition.name,
+    source_revision: definition.revision,
+    ...definition.source ? { definition_source: definition.source } : {},
+    context_id: FILE_CONTEXT,
+    sibling_ordinal: ordinal,
+    executor: "crisp",
+    coverage: "native-invocation-and-recorded-children"
+  });
+  trace.emit("invocation", {
+    phase: "start",
+    call_id: callId,
+    attempt: 1,
+    node: invocationNodeId(callId),
+    inputs: frame.parentCallId ? [{ node: invocationNodeId(frame.parentCallId), port: "caller" }] : [],
+    definition: { id: definition.id, revision: definition.revision },
+    context: FILE_CONTEXT,
+    signature: input.signature,
+    captures: {},
+    native_occurrence: occurrence
+  });
+  registerTrace(callId, trace, producerScopeForTrace(parent) ?? trace);
+  let open = true;
+  return { trace, finish(outcome) {
+    if (!open) return;
+    open = false;
+    try {
+      trace.emit("invocation", { phase: "end", call_id: callId, outcome });
+    } finally {
+      releaseTrace(callId);
+    }
+  } };
+}
+var init_crisp_trace = __esm({
+  "src/runtime/crisp-trace.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_trace();
+    init_execution_occurrence();
+    init_graph();
+  }
+});
+
 // src/native/native-protocol.ts
 function nativeProtocolFailure(response) {
   if (!record(response)) return void 0;
@@ -224777,6 +225152,13 @@ function shownCharsFor(contextTokens) {
   if (contextTokens === null || contextTokens === void 0 || !Number.isFinite(contextTokens)) return SHOWN_CHARS;
   return Math.max(SHOWN_CHARS, Math.floor(contextTokens * OUTPUT_CONTEXT_SHARE * PAGE_CHARS_PER_TOKEN));
 }
+function sealedValuesChars(contextTokens) {
+  if (contextTokens === null || contextTokens === void 0 || !Number.isFinite(contextTokens)) return Infinity;
+  return Math.max(SCOPE_VALUE_CHARS, Math.floor(contextTokens * SEALED_VALUES_CONTEXT_SHARE * PAGE_CHARS_PER_TOKEN));
+}
+function sealedValuesEnabled() {
+  return globalThis.process?.env?.NATLANG_READOUT_WHOLE_VALUES !== "0";
+}
 function noteText(what, where = {}) {
   return [
     what,
@@ -224798,7 +225180,7 @@ function cutText(text3, where = {}, budget = SHOWN_CHARS) {
 ${note(`cut off: ${tail - head} of ${text3.length} characters not shown`, where)}
 ${text3.slice(tail)}`;
 }
-var SHOWN_CHARS, SCOPE_VALUE_CHARS, SMALL_VALUE_CHARS, OUTPUT_CONTEXT_SHARE, PAGE_CHARS_PER_TOKEN, note;
+var SHOWN_CHARS, SCOPE_VALUE_CHARS, SMALL_VALUE_CHARS, OUTPUT_CONTEXT_SHARE, PAGE_CHARS_PER_TOKEN, SEALED_VALUES_CONTEXT_SHARE, note;
 var init_cutoff = __esm({
   "src/native/cutoff.ts"() {
     "use strict";
@@ -224808,6 +225190,7 @@ var init_cutoff = __esm({
     SMALL_VALUE_CHARS = 300;
     OUTPUT_CONTEXT_SHARE = 1 / 8;
     PAGE_CHARS_PER_TOKEN = 3.5;
+    SEALED_VALUES_CONTEXT_SHARE = 1 / 2;
     note = (what, where = {}) => `<<${noteText(what, where)}>>`;
   }
 });
@@ -224991,143 +225374,6 @@ var init_eval_types = __esm({
   }
 });
 
-// src/native/trace.ts
-function deriveSeed(root2, path2, attempt, purpose, ordinal = 0) {
-  const payload = { attempt, ordinal, path: path2, purpose, root: root2, version: "sha256-json-v1" };
-  const bytes2 = digest(JSON.stringify(payload));
-  let first = 0n;
-  for (const byte of bytes2.slice(0, 8)) first = first << 8n | BigInt(byte);
-  return Number(first % 2n ** 31n);
-}
-function valueType(value) {
-  if (value === null) return "null";
-  if (typeof value === "boolean") return "boolean";
-  if (typeof value === "number") return "number";
-  if (typeof value === "string") return "string";
-  if (Array.isArray(value)) return "List";
-  if (value && typeof value === "object") for (const [key, body] of Object.entries(value)) {
-    if (key.startsWith("$") && body && typeof body === "object" && "type" in body)
-      return String(body.type);
-  }
-  return "Record";
-}
-function canonical2(value) {
-  if (Array.isArray(value)) return value.map(canonical2);
-  if (value && typeof value === "object")
-    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, item]) => [key, canonical2(item)]));
-  return value;
-}
-function changes(before, after, path2 = []) {
-  if (before && after && typeof before === "object" && typeof after === "object" && !Array.isArray(before) && !Array.isArray(after)) {
-    const a = before, b = after;
-    return [.../* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)])].sort().flatMap((key) => {
-      if (!(key in a) || !(key in b)) return [{
-        path: [...path2, key],
-        before_present: key in a,
-        after_present: key in b,
-        before: a[key] ?? null,
-        after: b[key] ?? null,
-        type: key in b ? valueType(b[key]) : null
-      }];
-      return changes(a[key], b[key], [...path2, key]);
-    });
-  }
-  if (sameValue(before, after)) return [];
-  return [{ path: path2, before_present: true, after_present: true, before, after, type: valueType(after) }];
-}
-var TRACE_VERSION, sameValue, NativeTraceRecorder;
-var init_trace = __esm({
-  "src/native/trace.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    init_hash();
-    TRACE_VERSION = "reduction-trace/1";
-    sameValue = (a, b) => JSON.stringify(canonical2(a)) === JSON.stringify(canonical2(b));
-    NativeTraceRecorder = class _NativeTraceRecorder {
-      events = [];
-      started = performance.now();
-      constructor(manifest) {
-        this.emit("manifest", manifest);
-      }
-      /** Open a captured trace for read-only reconstruction and admission checks. */
-      static fromEvents(events) {
-        const trace = new _NativeTraceRecorder({});
-        trace.events.splice(0, trace.events.length, ...structuredClone(events));
-        trace.reconstruct();
-        return trace;
-      }
-      /** Sees each event as it is emitted (live observers); what it throws is ignored. */
-      observer;
-      emit(kind, data = {}) {
-        const event = JSON.parse(JSON.stringify({
-          version: TRACE_VERSION,
-          seq: this.events.length,
-          kind,
-          observed_at: (/* @__PURE__ */ new Date()).toISOString(),
-          elapsed_ms: Math.round(performance.now() - this.started),
-          ...data
-        }));
-        this.events.push(event);
-        if (this.observer) try {
-          this.observer(event);
-        } catch {
-        }
-        return event;
-      }
-      finalState() {
-        const states = this.events.filter((event) => event.kind === "state");
-        if (!states.length) throw new Error("trace has no state");
-        return states.at(-1).value;
-      }
-      coverage() {
-        const states = this.events.filter((event) => event.kind === "state");
-        const incomplete = states.some((event) => /"\$stream"|"\$opaque"/.test(JSON.stringify(event.value)));
-        return {
-          state_reconstructable: states.length > 0,
-          live_source_reconstructable: !incomplete,
-          native_effects_replayable: false,
-          effect_count: this.events.filter((event) => event.kind === "effect").length,
-          mode: "recorded-observations-only"
-        };
-      }
-      replayObservations() {
-        const states = this.events.filter((event) => event.kind === "state");
-        if (states[0]?.phase !== "initial" || states.at(-1)?.phase !== "final")
-          throw new Error("trace lacks complete initial/final observations");
-        return {
-          initial: states[0].value,
-          final: states.at(-1).value,
-          outcome: states.at(-1).outcome,
-          actions: this.events.filter((event) => event.kind === "action"),
-          effects: this.events.filter((event) => event.kind === "effect"),
-          coverage: this.coverage()
-        };
-      }
-      reconstruct() {
-        if (this.events[0]?.kind !== "manifest" || this.events.some((event, index) => event.version !== TRACE_VERSION || event.seq !== index)) throw new Error("unsupported or discontinuous trace");
-        const first = this.events.find((event) => event.kind === "state" && event.phase === "initial");
-        if (!first) throw new Error("trace has no initial state");
-        let current = structuredClone(first.value);
-        for (const event of this.events.filter((event2) => event2.kind === "reduction")) {
-          for (const change of event.changes) {
-            const path2 = change.path;
-            if (!path2.length) {
-              current = structuredClone(change.after);
-              continue;
-            }
-            let target = current;
-            for (const part of path2.slice(0, -1)) target = target[String(part)];
-            if (change.after_present) target[String(path2.at(-1))] = structuredClone(change.after);
-            else delete target[String(path2.at(-1))];
-          }
-        }
-        if (!sameValue(current, this.finalState())) throw new Error("trace reconstruction mismatch");
-        return current;
-      }
-    };
-  }
-});
-
 // src/native/file-diff-preview.ts
 function describe(bytes2) {
   if (bytes2 === void 0) return void 0;
@@ -225190,6 +225436,23 @@ var init_file_diff_preview = __esm({
 function namesOf(name) {
   if (import_typescript19.default.isIdentifier(name)) return [name];
   return name.elements.flatMap((element) => import_typescript19.default.isOmittedExpression(element) ? [] : namesOf(element.name));
+}
+function evalDeclaredNames(source2) {
+  const file = import_typescript19.default.createSourceFile("eval.ts", source2, import_typescript19.default.ScriptTarget.Latest, false, import_typescript19.default.ScriptKind.TS);
+  const names = /* @__PURE__ */ new Set();
+  for (const statement of file.statements) {
+    if (import_typescript19.default.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) for (const name of namesOf(declaration.name)) names.add(name.text);
+    } else if ((import_typescript19.default.isFunctionDeclaration(statement) || import_typescript19.default.isClassDeclaration(statement)) && statement.name) {
+      names.add(statement.name.text);
+    } else if (import_typescript19.default.isImportDeclaration(statement) && statement.importClause && !(import_typescript19.default.isStringLiteral(statement.moduleSpecifier) && STD_SPECIFIERS.includes(statement.moduleSpecifier.text))) {
+      const clause = statement.importClause, bindings2 = clause.namedBindings;
+      if (clause.name) names.add(clause.name.text);
+      if (bindings2 && import_typescript19.default.isNamespaceImport(bindings2)) names.add(bindings2.name.text);
+      if (bindings2 && import_typescript19.default.isNamedImports(bindings2)) for (const element of bindings2.elements) names.add(element.name.text);
+    }
+  }
+  return names;
 }
 function bindingInitializerProjections(name, initializer) {
   const projections = /* @__PURE__ */ new Map();
@@ -225530,8 +225793,49 @@ function compileScopeSnippet(source2, options = {}) {
   }
   return result;
 }
+function lowerStdImports(source2, std) {
+  if (!/@natlang\/(?:node|browser|core)\/std\b/.test(source2)) return source2;
+  const module = import_typescript19.default.createSourceFile("imports.ts", source2, import_typescript19.default.ScriptTarget.ES2022, true, import_typescript19.default.ScriptKind.TS);
+  const imports = module.statements.filter((statement) => import_typescript19.default.isImportDeclaration(statement) && import_typescript19.default.isStringLiteral(statement.moduleSpecifier) && STD_SPECIFIERS.includes(statement.moduleSpecifier.text));
+  let lowered = source2;
+  for (const statement of [...imports].reverse()) {
+    const specifier = statement.moduleSpecifier.text;
+    const clause = statement.importClause;
+    const bindings2 = clause?.namedBindings;
+    const named2 = bindings2 && import_typescript19.default.isNamedImports(bindings2) ? bindings2.elements.filter((element) => !element.isTypeOnly && !clause.isTypeOnly) : [];
+    const other = clause && !clause.isTypeOnly && (clause.name || bindings2 && import_typescript19.default.isNamespaceImport(bindings2)) ? "*" : named2.map((element) => (element.propertyName ?? element.name).text).find((name) => !std.includes(name));
+    if (other !== void 0 || !clause && !std.length) {
+      const start = statement.getStart(module), location = module.getLineAndCharacterOfPosition(start);
+      const list = std.length ? `${std.slice(0, -1).join(", ")}${std.length > 1 ? " and " : ""}${std.at(-1)}` : "";
+      return {
+        code: "forbidden-dynamic-code",
+        start,
+        end: statement.end,
+        line: location.line + 1,
+        column: location.character + 1,
+        message: std.length ? `${other === "*" ? `A namespace or default import of ${specifier}` : `${other} from ${specifier}`} is not available in eval; its combinators ${list} are built into this scope: call them by name, without an import.` : `${specifier} is not available in this eval.`
+      };
+    }
+    const text3 = named2.filter((element) => element.propertyName && element.propertyName.text !== element.name.text).map((element) => `const ${element.name.text} = ${element.propertyName.text};`).join(" ");
+    lowered = lowered.slice(0, statement.getStart(module)) + text3 + lowered.slice(statement.end);
+  }
+  return lowered;
+}
 function compileScopeSnippetUnhinted(source2, options = {}) {
   if (typeof source2 !== "string") throw new TypeError("scope source must be a string");
+  if (options.stdBindings) {
+    const lowered = lowerStdImports(source2, options.stdBindings);
+    if (typeof lowered !== "string") return {
+      version: SCOPE_COMPILE_VERSION,
+      ok: false,
+      entrypoint: ENTRYPOINT,
+      bindings: [],
+      producesResult: false,
+      diagnostics: [lowered],
+      repairs: []
+    };
+    if (lowered !== source2) return compileScopeSnippetUnhinted(lowered, options);
+  }
   if (options.allowModules) {
     const module = import_typescript19.default.createSourceFile("imports.ts", source2, import_typescript19.default.ScriptTarget.ES2022, true, import_typescript19.default.ScriptKind.TS);
     const imports = module.statements.filter(import_typescript19.default.isImportDeclaration);
@@ -226092,7 +226396,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     readouts = analysis.readouts ?? [];
     rebinds = analysis.rebinds ?? [];
     instantiations = analysis.instantiations ?? [];
-    for (const item of analysis.diagnostics) diagnostics.push(toRaw(item));
+    for (const item of analysis.diagnostics) if (item.severity !== "warning") diagnostics.push(toRaw(item));
   }
   if (options.checkFields) for (const item of options.checkFields(analysisSource)) diagnostics.push(toRaw(item));
   const primitive = [];
@@ -226480,9 +226784,14 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   if (diagnostics.length) return result;
   const mutableCaptures = captureOptions.filter((binding) => binding.mutable).map((binding) => binding.name);
   const prologue = [
-    inputNames.length ? `const { ${inputNames.join(", ")} } = __natlang_frozen(__natlang_copy(__inputs));` : "",
+    "const __natlang_seen = new Map<object, any>();",
+    // The inputs as the eval sees them, handed to the host so it maps their parts back to its own values.
+    `const __natlang_in = __natlang_frozen(__natlang_copy(__inputs, __natlang_seen));`,
+    "__live.scopeInputs?.(__natlang_in);",
+    inputNames.length ? `const { ${inputNames.join(", ")} } = __natlang_in;` : "",
     // Your own locals come back as mutable copies (only parameters are frozen); the eval commits them when it succeeds.
-    ...localOptions.filter((binding) => !shadowedLocals.has(binding.name)).map((binding) => `${binding.mutable ? "let" : "const"} ${binding.name}${binding.annotation ? `: ${binding.annotation}` : ""} = __natlang_copy(__locals.${binding.name});`),
+    // A local that holds a part of an input holds that (frozen) part itself.
+    ...localOptions.filter((binding) => !shadowedLocals.has(binding.name)).map((binding) => `${binding.mutable ? "let" : "const"} ${binding.name}${binding.annotation ? `: ${binding.annotation}` : ""} = __natlang_copy(__locals.${binding.name}, __natlang_seen);`),
     ...localOptions.filter((binding) => binding.mutable && !shadowedLocals.has(binding.name)).map((binding) => `__live.bindLocal?.(${JSON.stringify(binding.name)}, () => ${binding.name}, (__v: any) => { ${binding.name} = __v; });`),
     ...captureOptions.map((binding) => `${binding.mutable ? "let" : "const"} ${binding.name} = __captures.${binding.name};`),
     ...helperNames.map((name) => `const ${name} = __natlang_callable(${JSON.stringify(name)});`),
@@ -226534,6 +226843,7 @@ var init_scope_compiler = __esm({
     init_host();
     init_policy();
     init_tool_markup();
+    init_intrinsics();
     SCOPE_COMPILE_VERSION = 3;
     ENTRYPOINT = "__natlang_scope";
     PREFIX = `async function ${ENTRYPOINT}(__inputs: Readonly<Record<string, unknown>>, __locals: Readonly<Record<string, unknown>>, __captures: Readonly<Record<string, unknown>>) {
@@ -226541,8 +226851,16 @@ var init_scope_compiler = __esm({
     SCOPE_RUNTIME_PRELUDE = `const __natlang_plain = (value: any) => !!value && typeof value === 'object' && !Array.isArray(value) &&
   Object.prototype.toString.call(value) === '[object Object]' &&
   (Object.getPrototypeOf(value) === null || Object.getPrototypeOf(Object.getPrototypeOf(value)) === null);
-const __natlang_copy = (value: any): any => Array.isArray(value) ? value.map(__natlang_copy) :
-  __natlang_plain(value) ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, __natlang_copy(v)])) : value;
+// One copy of the whole scope: an object two names hold (two locals, or a local and a part of an input) stays one
+// object, as in JavaScript, so identity checks (indexOf, ===) keep their meaning from one eval to the next.
+const __natlang_copy = (value: any, seen: Map<object, any> = new Map()): any => {
+  if (!Array.isArray(value) && !__natlang_plain(value)) return value;
+  if (seen.has(value)) return seen.get(value);
+  if (Array.isArray(value)) { const out: any[] = []; seen.set(value, out); for (const item of value) out.push(__natlang_copy(item, seen)); return out; }
+  const out: Record<string, any> = {}; seen.set(value, out);
+  for (const [k, v] of Object.entries(value)) Object.defineProperty(out, k, { value: __natlang_copy(v, seen), enumerable: true, writable: true, configurable: true });
+  return out;
+};
 const __natlang_frozen = (value: any): any => {
   if (Array.isArray(value) || __natlang_plain(value)) { Object.freeze(value); for (const item of Object.values(value)) __natlang_frozen(item); }
   return value;
@@ -226657,7 +226975,14 @@ const __natlang_iterate = (step: any, ...rest: any[]) =>
       "Float32Array",
       "Float64Array",
       "ArrayBuffer",
-      "Promise"
+      "Promise",
+      // natlang's own ambient types, declared in every eval (compiler/intrinsics.ts); a helper annotated with them persists.
+      "Untrusted",
+      "Is",
+      "IterationEvent",
+      "IterationTrajectory",
+      "ProgressVerdict",
+      "ProgressJudge"
     ]);
     NOT_LITERAL = /* @__PURE__ */ Symbol("not a literal");
     JS_KEYWORDS = /* @__PURE__ */ new Set([
@@ -230554,6 +230879,14 @@ function evalContextValue() {
     ofCallable: (fn) => contextClass().ofCallable(fn)
   });
 }
+function evalStdEnabled() {
+  const setting = typeof process === "undefined" ? void 0 : process.env?.NATLANG_EVAL_STD;
+  return !/^(?:0|off|false|no)$/i.test((setting ?? "").trim());
+}
+function evalIdentityEnabled() {
+  const setting = typeof process === "undefined" ? void 0 : process.env?.NATLANG_EVAL_IDENTITY;
+  return !/^(?:0|off|false|no)$/i.test((setting ?? "").trim());
+}
 function rejected(error) {
   const softMismatch = error.diagnostics.some((diagnostic) => diagnostic.code === "type-mismatch" && /\bNeuralese\s*</.test(diagnostic.expected ?? ""));
   const nlWithIssue = error.diagnostics.some((diagnostic) => diagnostic.code === "nl-type-arguments" || diagnostic.code === "nl-explicit-captures" || /\bnl\.with\b/.test(`${diagnostic.path} ${diagnostic.expected ?? ""} ${diagnostic.text ?? ""}`));
@@ -230681,20 +231014,6 @@ function typedTextPreflightType(value, type, env, path2, plans) {
   }
   return resolved;
 }
-function stableBinding(value) {
-  const normalize2 = (item) => {
-    if (Array.isArray(item)) return item.map(normalize2);
-    if (!item || typeof item !== "object") return item;
-    const record3 = item;
-    if (record3.$live && typeof record3.$live === "object") {
-      const live2 = record3.$live;
-      return { $live: { type: live2.type } };
-    }
-    if (record3.$host && typeof record3.$host === "object") return { $host: normalize2(record3.$host) };
-    return Object.fromEntries(Object.keys(record3).sort().map((key) => [key, normalize2(record3[key])]));
-  };
-  return JSON.stringify(normalize2(value));
-}
 function applyTypedTextRefs(value, plans, refs) {
   const root2 = { children: /* @__PURE__ */ new Map() };
   plans.forEach((plan, index) => {
@@ -230791,14 +231110,14 @@ function containsLive(value) {
   }
   return false;
 }
-function splitScope(values) {
-  const portable3 = {}, live2 = {};
+function splitScope(values, shared) {
+  const portable2 = {}, live2 = {};
   for (const [name, value] of Object.entries(values)) {
     if (value === MISSING || isPending(value)) continue;
     if (containsLive(value)) live2[name] = value;
-    else portable3[name] = dump(value);
+    else portable2[name] = dump(value, false, shared);
   }
-  return { portable: portable3, live: live2 };
+  return { portable: portable2, live: live2 };
 }
 function liveTypeText(value) {
   if (typeof value === "function") return `Live<${JSON.stringify(`function ${value.name || ""}`.trim())}, "function", "">`;
@@ -231246,11 +231565,12 @@ function callableTypes(codebase) {
   }
   return types3;
 }
-var import_typescript21, SELF_CALL_ADVICE, oneLine, NL_WITH_HINT, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, protectedEditError, PROTECTED_TYPES_ERROR, CONTRACT_EDIT_ERROR, PROTECT_LIST_ERROR, formatArgList, firstDocLine, callableAliases, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
+var import_typescript21, SELF_CALL_ADVICE, oneLine, NL_WITH_HINT, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, EVAL_STD_COMBINATORS, EVAL_STD_FOLDER_COMBINATORS, STD_BUILT_IN_DOCS, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, protectedEditError, PROTECTED_TYPES_ERROR, CONTRACT_EDIT_ERROR, PROTECT_LIST_ERROR, formatArgList, firstDocLine, callableAliases, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
 var init_runtime = __esm({
   "src/native/runtime.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    init_execution_occurrence();
     init_type_aliases();
     init_writes();
     init_prompt();
@@ -231325,6 +231645,72 @@ var init_runtime = __esm({
     ];
     CODE_TOOLS = ["read_code", "edit_code", "diff_code"];
     ITERATION_STATE_GUIDANCE = "Extra arguments are fixed: iterateOn(step, initialState, 0) passes 0 to every step; it does not supply an iteration index. For ordered edits, put nextPass in the state alongside the current draft, apply passes[state.nextPass], return the revised draft with nextPass increased by one, and stop when nextPass equals passes.length. The stopping check also runs on the initial state before any step; existing fields or a complete object shape do not establish that all edits have been applied. maxSteps limits work; reaching it does not declare success.\nFor a typed draft revision, capture fixed context in nl.with<Draft>({ policy }), call that child with state.draft, and wrap its returned Draft only in the code step: return { pass: state.pass + 1, draft: nextDraft }. The child takes the Draft argument, not the capture object or the outer progress state; its result is the complete Draft. Capture the applicable output contract, including exact-copy and field-format rules, and pass the current full draft as the child argument. After each pass, build from the returned draft; do not reconstruct later state from an outer initial draft. nl.with accepts one type argument (result type or full callable signature), or two as <CaptureRecord, Result>; the first checks listed captures and does not type the child input. For example:\n  type Progress = { pass: number; draft: Draft };\n  const step = async (state: Progress): Promise<Progress> => {\n    const nextDraft = await nl.with<Draft>({ policy, pass: passes[state.pass] })`Apply this pass to the current draft.`(state.draft);\n    return { pass: state.pass + 1, draft: nextDraft };\n  };\nThe child returns Draft; the TypeScript step returns Progress.\n";
+    EVAL_STD_COMBINATORS = [
+      "semanticMap",
+      "semanticFilter",
+      "semanticPartition",
+      "semanticReduce",
+      "semanticMatch",
+      "semanticRank",
+      "semanticRepair",
+      "fixedPoint",
+      "semanticMerge",
+      "escalate",
+      "withContext",
+      "compileRule"
+    ];
+    EVAL_STD_FOLDER_COMBINATORS = ["proposeAndVerify", "branchAndSelect"];
+    STD_BUILT_IN_DOCS = {
+      semanticMap: `semanticMap(items, fn, { concurrency? }): call fn(item, index) on every item, concurrently, and return the
+results in the items' order. fn is a function of this program, an nl function or an arrow function.
+  const summaries = await semanticMap(tickets, summarize);
+  const labels = await semanticMap(rows, row => nl<'bug' | 'question'>\`Label the row's text.\`(row.text), { concurrency: 4 });
+Each call runs as a child of this call, under a std:semanticMap span.`,
+      semanticFilter: `semanticFilter(items, criterionOrPredicate, { floor? }): the items that pass, in order. A string criterion is
+judged per item by the shipped meets judgment; a function returns a boolean. With floor, each judgment is scored and an
+item passes when its probability of true reaches floor.
+  const urgent = await semanticFilter(tickets, 'needs a reply today');
+  const valid = await semanticFilter(rows, isValidRow);`,
+      semanticPartition: `semanticPartition(items, classifier, { floor? }): group items by the label classifier(item) returns.
+  const { groups, uncertain } = await semanticPartition(tickets, routeTicket);
+groups maps each label to its items; uncertain lists items whose label's probability fell below floor.`,
+      semanticReduce: `semanticReduce(items, initial, step, { mode?: 'linear' | 'tree', combine? }): fold the items into one state.
+step(state, item, index) returns the next state; with mode 'tree', step makes one state per item from initial and
+combine(left, right) joins them pairwise.
+  const digest = await semanticReduce(notes, '', (summary, note) => nl<string>\`Fold note into summary.\`(summary, note));
+Each step runs as a child of this call, under a std:semanticReduce span.`,
+      semanticMatch: `semanticMatch(left, right, { relation?, match?, block?, floor? }): pair items of left with items of right.
+relation is a sentence judged per pair (shipped relates judgment), or match(l, r) decides; block(l, r) skips pairs cheaply.
+  const { pairs, unmatchedLeft, unmatchedRight } = await semanticMatch(invoices, payments, { relation: 'pays this invoice' });`,
+      semanticRank: `semanticRank(items, goal, { debiased? }): order items by goal from pairwise judgments (shipped beats judgment).
+  const { ranked, scores } = await semanticRank(drafts, 'clearest answer to the question');`,
+      semanticRepair: `semanticRepair(value, { check, fix, attempts }): check(value) returns the problems it finds (strings, none when
+it passes); while there are problems, fix(value, problems) returns a new value, at most attempts times.
+  const repaired = await semanticRepair(draft, { check: d => problemsOf(d), fix: (d, problems) => reviseDraft(d, problems), attempts: 3 });
+  // { ok, value, problems, attempts, history }`,
+      fixedPoint: `fixedPoint(step, initial, { settled?, maxSteps? }): apply step to its own output until the value stops changing
+in meaning (the shipped settled judgment, or settled(previous, current)); returns { value, steps, settled }. With an exact
+settled test give maxSteps.
+  const { value } = await fixedPoint(tighten, draft);`,
+      semanticMerge: `semanticMerge(base, ours, theirs, { check? }): merge two edits of base key by key; conflicting edits are judged
+by intent and combined when compatible. Returns { value, merged, unresolved }.`,
+      escalate: `escalate(fn, { to, floor?, risk?, policy? }): fn's decision, sent to the stronger model to when its confidence is below
+floor (or a risky label's probability passes risk[label]). Returns a function; its result is a decision record.
+  const verdict = await escalate(classify, { to: 'teacher', floor: 0.8 })(item);
+  // verdict.value, verdict.confidence, verdict.escalated`,
+      withContext: `withContext(fn, entries): fn bound to its own context with these data entries added (fn.in(...)); not awaited.
+  const strict = withContext(review, { policy: strictPolicy });
+  const verdict = await strict(item);`,
+      compileRule: `compileRule(rule, { examples?, check?, attempts? }): a function (item) => Promise<result> written from the rule,
+checked against the examples ({ input, expected }) and revised until they pass.
+  const isSpam = await compileRule('the message asks for money from a stranger', { examples });`,
+      proposeAndVerify: `proposeAndVerify(folder, reducer, { verify, attempts, args? }): run reducer on a private copy of folder,
+verify(proposal) returns the problems it finds; a failing proposal is proposed again with its problems as reducer's last
+argument. Only a passing proposal is accepted into folder. Returns { accepted, proposal, value, problems, attempts, history }.`,
+      branchAndSelect: `branchAndSelect(folder, branches, { verify?, goal?, select? }): run each branch (a reducer, or { reducer, args })
+on its own private copy of folder, keep the ones verify passes, choose one by goal (pairwise judgments) or select, and
+accept it. Returns { chosen, proposal, value, candidates }.`
+    };
     BUILT_IN_DOCS = {
       Neuralese: NEURALESE_TYPE_DOCUMENTATION,
       read: "Read an opaque Neuralese<T> value using the configured typed reader. In eval, call `await read(value)`; it returns Promise<T> and records the ordinary typed readout in the execution graph. Already-crisp strings pass through unchanged; other non-reference values are rejected. Use FileHandle.readText() or FileHandle.readJson() for files.",
@@ -231693,20 +232079,10 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         ];
         const definitionId = String(manifest.definition_id ?? node.functionName), revision2 = String(manifest.source_revision ?? "");
         const context = String(manifest.context_id ?? FILE_CONTEXT), signature = formatType(node.type);
-        const argumentBindingSha = hexDigest(stableBinding(dump(node.args, true)));
+        const argumentBindingSha = occurrenceArgumentHash(dump(node.args, true));
         const parentOccurrence = manifest.parent_occurrence && typeof manifest.parent_occurrence === "object" ? manifest.parent_occurrence : void 0;
         const siblingOrdinal = Number.isSafeInteger(manifest.sibling_ordinal) ? Number(manifest.sibling_ordinal) : 0;
-        const occurrenceBase = {
-          schema: "natlang.execution-occurrence/1",
-          definition_id: definitionId,
-          revision: revision2,
-          context,
-          signature,
-          parent_occurrence_sha256: typeof parentOccurrence?.occurrence_sha256 === "string" ? parentOccurrence.occurrence_sha256 : null,
-          sibling_ordinal: siblingOrdinal,
-          argument_binding_sha256: argumentBindingSha
-        };
-        const occurrence = { ...occurrenceBase, occurrence_sha256: hexDigest(stableBinding(occurrenceBase)) };
+        const occurrence = executionOccurrence({ definitionId, revision: revision2, context, signature, parent: parentOccurrence, ordinal: siblingOrdinal, argumentHash: argumentBindingSha });
         return {
           node: invocationNodeId(callId),
           inputs,
@@ -231934,7 +232310,6 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
       }
       runtime;
       lam;
-      env;
       /** Program guidance written from its text, to be primed in this call once its opening exists (agent.ts). */
       guidancePrime;
       completed = false;
@@ -231974,6 +232349,41 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
       /** Exact native tool schemas offered by NativeToolAgent for this call's current turn. */
       offeredToolDocs = /* @__PURE__ */ new Map();
       activeScopeLocals;
+      /** The std built-ins the eval being compiled has (hooks.ts evalDeclarations types them from `@natlang/node/std`). */
+      evalStdBindings = [];
+      /** The call's type environment; a recursive type an eval declares joins it (bindLocalTypeNames). */
+      env;
+      /**
+       * An eval's types are inlined into a local's type where it is used; a recursive one (`type Node = { kids: Node[] }`)
+       * cannot be, so the names a type still refers to join this call's type environment, with the local types they reach.
+       */
+      bindLocalTypeNames(type, localTypes) {
+        const pending = typeAliasNames(type), add = {};
+        while (pending.length) {
+          const name = pending.pop();
+          if (Object.hasOwn(add, name) || !Object.hasOwn(localTypes, name) || this.env.lookup(name)) continue;
+          add[name] = localTypes[name];
+          pending.push(...typeAliasNames(localTypes[name]));
+        }
+        if (Object.keys(add).length) this.env = this.env.child(add);
+      }
+      /** The standard library eval's std built-ins come from: the platform's instance, unless NATLANG_EVAL_STD turns them off. */
+      stdLibrary() {
+        return evalStdEnabled() ? stdModule(this.runtime.frame?.task.runtime.platform) : void 0;
+      }
+      /** The std combinators this call offers in eval: all of them, the workspace ones where the call has a folder. */
+      stdCombinators() {
+        const library = this.stdLibrary();
+        if (!library) return [];
+        return [...EVAL_STD_COMBINATORS, ...this.lam.projectTransaction ? EVAL_STD_FOLDER_COMBINATORS : []].filter((name) => typeof library[name] === "function");
+      }
+      /** The std combinators an eval of `source` has: those no input, local, function, service, capture or declaration of it takes. */
+      evalStdNames(source2) {
+        const inputs = this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : [];
+        const services = this.availableServices(), captures = this.lam.captures ?? {};
+        const declared = evalDeclaredNames(source2);
+        return this.stdCombinators().filter((name) => !inputs.includes(name) && !Object.hasOwn(this.lam.let, name) && !Object.hasOwn(this.lam.codebase, name) && !Object.hasOwn(services, name) && !Object.hasOwn(captures, name) && !this.persistentScopeHelpers.has(name) && !declared.has(name));
+      }
       executionOccurrence() {
         const event = this.runtime.trace.events.find((item) => item.kind === "invocation" && item.phase === "start" && item.call_id === this.runtime.options.runId);
         const occurrence = event?.native_occurrence;
@@ -232092,8 +232502,10 @@ Invoke this as a separate tool action; it is not callable from eval.`;
         const effects = completedEffectEvents.map((event) => String(event.capability ?? event.operation ?? event.kind));
         const receipts = effectEvents.filter((event) => event.kind === "effect" && event.phase === "completed").slice(-8).map((event) => `${String(event.capability ?? event.operation ?? "service call")} completed: ${this.show(typeof event.result === "string" ? event.result : JSON.stringify(event.result) ?? "null")}`);
         this.evalDetail = { console: logs.join("\n") };
-        const reaching = /is not defined|unavailable in eval|is not a function|Cannot find name/.test(message2 + diagnostics.map((item) => String(item.message ?? "")).join("\n"));
-        const tool2 = /\b(\w+) is not defined/.exec(message2)?.[1];
+        const allText = message2 + diagnostics.map((item) => String(item.message ?? "")).join("\n");
+        const reaching = /is not defined|unavailable in eval|is not a function|Cannot find name|is not bound in this call's eval scope/.test(allText);
+        const unbound = /\b(\w+) is not bound in this call's eval scope/.exec(allText)?.[1];
+        const tool2 = /\b(\w+) is not defined/.exec(message2)?.[1] ?? (unbound && (NATIVE_TOOLS.includes(unbound) || unbound === this.lam.functionName) ? unbound : void 0);
         const toolNote = tool2 && NATIVE_TOOLS.includes(tool2) && tool2 !== "return_result" ? `
 ${tool2} is one of your tools: call it as a tool, not from eval code.` : "";
         const bindingNote = tool2 && tool2 === this.lam.functionName ? `
@@ -232639,7 +233051,18 @@ Repair subsequent work without repeating an already completed write.` : "") + //
       notATool(name, args) {
         const root2 = name.split(".")[0];
         const hasCodebase = Object.keys(this.lam.codebase).length > 0;
-        const builtins = ["transcript", "nl", "iterateOn", "decide", "read", "refine", "assume", "NatlangContext", ...hasCodebase ? ["search_code"] : []];
+        const builtins = [
+          "transcript",
+          "nl",
+          "iterateOn",
+          "decide",
+          "read",
+          "refine",
+          "assume",
+          "NatlangContext",
+          ...hasCodebase ? ["search_code"] : [],
+          ...this.stdCombinators()
+        ];
         const inputs = this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : [];
         const scope = /* @__PURE__ */ new Set([
           ...builtins,
@@ -232654,8 +233077,9 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           return { path: name, code: "bad-action", expected: "a scope-eval tool" };
         const first = Object.values(args).find((value2) => typeof value2 === "string" || typeof value2 === "number");
         const shown = first === void 0 ? "" : JSON.stringify(first);
-        const awaited = builtins.includes(root2) && root2 !== "transcript" && root2 !== "NatlangContext" && root2 !== "search_code" && root2 !== "assume" || Object.hasOwn(this.lam.codebase, root2) || this.persistentScopeHelpers.has(root2);
-        const value = !awaited && root2 !== "transcript" && root2 !== "NatlangContext" && root2 !== "search_code" && root2 !== "assume" && !Object.hasOwn(this.availableServices(), root2);
+        const unawaited = ["transcript", "NatlangContext", "search_code", "assume", "escalate", "withContext"];
+        const awaited = builtins.includes(root2) && !unawaited.includes(root2) || Object.hasOwn(this.lam.codebase, root2) || this.persistentScopeHelpers.has(root2);
+        const value = !awaited && !unawaited.includes(root2) && !Object.hasOwn(this.availableServices(), root2);
         const example2 = name === "transcript" ? 'transcript.search("\u2026")' : value && name === root2 ? name : `${awaited ? "await " : ""}${name}(${shown})`;
         return { path: name, code: "bad-action", text: `${name}: bad-action, ${name} is not a tool: ${root2} is in this call's eval scope. Use it in code, for example eval with code: ${example2}${builtins.includes(root2) ? `; read_code("${root2}") shows how to use it` : ""}.` };
       }
@@ -232701,7 +233125,9 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           ...Object.keys(this.lam.codebase).length > 0 ? ["search_code"] : []
         ];
         const builtInList = `${builtIns.slice(0, -1).join(", ")} and ${builtIns.at(-1)}`;
-        return `This call's eval scope has ${names.length ? names.join(", ") : "no names of its own"}, the built-ins ${builtInList} (read_code shows how to use them), and standard JavaScript; nothing else (no Node modules, no require).`;
+        const std = this.stdCombinators().filter((name) => !names.includes(name));
+        const stdList = std.length ? `, the semantic combinators ${std.slice(0, -1).join(", ")} and ${std.at(-1)}` : "";
+        return `This call's eval scope has ${names.length ? names.join(", ") : "no names of its own"}, the built-ins ${builtInList}${stdList} (read_code shows how to use them), and standard JavaScript; nothing else (no Node modules, no require).`;
       }
       availableServices() {
         const frame = this.runtime.frame;
@@ -232755,13 +233181,18 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           if (!findCodebaseItem(this.lam.codebase, requested)) throw new Reject([{ path: requested, code: "no-such-function", expected: `a bound skill or one of its files: ${Object.keys(this.lam.skills.documents).join(", ")}` }]);
         }
         const service2 = requested.split(".")[0];
-        if (Object.hasOwn(this.availableServiceDeclarations(), service2) && !findCodebaseItem(this.lam.codebase, requested) && !Object.hasOwn(BUILT_IN_DOCS, requested)) {
+        const stdDoc = this.stdCombinators().includes(requested) ? STD_BUILT_IN_DOCS[requested] : void 0;
+        if (Object.hasOwn(this.availableServiceDeclarations(), service2) && !findCodebaseItem(this.lam.codebase, requested) && !Object.hasOwn(BUILT_IN_DOCS, requested) && stdDoc === void 0) {
           if (name === "edit_code") throw new Reject([{ path: requested, code: "external", expected: `a function of this program; ${service2} is an external service: its declaration can be read, but it runs outside this program and cannot be changed` }]);
           const declaration = this.runtime.declarations[service2];
           return { kind: "ok", text: `${declaration}
 // ${service2} is an external service: this declaration is all of it there is to read.`, value: declaration };
         }
         const found = findCodebaseItem(this.lam.codebase, requested);
+        if (!found && stdDoc !== void 0) {
+          if (name === "edit_code") throw new Reject([{ path: requested, code: "built-in", expected: `a function of this program's codebase; ${requested} is built into eval and cannot be changed` }]);
+          return { kind: "ok", text: stdDoc, value: stdDoc };
+        }
         if (!found && Object.hasOwn(BUILT_IN_DOCS, requested)) {
           if (name === "edit_code") throw new Reject([{ path: requested, code: "built-in", expected: `a function of this program's codebase; ${requested} is built into eval and cannot be changed` }]);
           const docs = canGenerateNl(this.runtime.frame) ? BUILT_IN_DOCS[requested] : requested === "nl" ? "Ad hoc nl calls are unavailable at this fifth layer. Make the judgment here or call an existing named function from a file." : requested === "iterateOn" ? BUILT_IN_DOCS.iterateOn.split("step(state, ...otherArgs)")[0] + "step(state, ...otherArgs) returns the next state and may be async; the stopping check receives that state. " + ITERATION_STATE_GUIDANCE : BUILT_IN_DOCS[requested];
@@ -233084,6 +233515,9 @@ ${paths.join("\n")}`;
             expected: "This argument is declared Neuralese<T>. Marker bodies are literal and do not evaluate JavaScript concatenation. Return the computed typed value directly, without marker strings."
           }]);
         const desugared = desugarNlCalls(sourceWithLiteralCalls(written));
+        const stdLibrary = this.stdLibrary();
+        const stdNames = stdLibrary ? this.evalStdNames(desugared) : [];
+        this.evalStdBindings = stdNames;
         const code = this.runtime.hooks.lowerRefinements ? this.runtime.hooks.lowerRefinements(this, desugared) : desugared;
         const scopeBefore = this.scopeSnapshot(), traceMark = this.runtime.trace.events.length;
         const inputNames = this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : [];
@@ -233101,7 +233535,8 @@ ${paths.join("\n")}`;
         const inputsBinding = hasCallInputs && !taken("read_inputs"), inputsObject = hasCallInputs && !taken("inputs");
         if (inputsBinding) opaqueNames.push("read_inputs");
         if (inputsObject) opaqueNames.push("inputs");
-        const declaredHere = (name) => new RegExp(`\\b(?:const|let|var|function|class)\\s+${name}\\b|[{,]\\s*${name}\\s*[,}=]`).test(code);
+        const declaredNames = evalDeclaredNames(code);
+        const declaredHere = (name) => declaredNames.has(name);
         const finishers = ["return_result"].filter((name) => !taken(name) && !declaredHere(name));
         opaqueNames.push(...finishers);
         let requested;
@@ -233120,7 +233555,7 @@ ${paths.join("\n")}`;
         if (contextBinding) opaqueNames.push("NatlangContext");
         const transcriptBinding = !taken("transcript") && !callableNames.includes("transcript") && !serviceNames.includes("transcript") && !Object.hasOwn(captureCells, "transcript");
         if (transcriptBinding) opaqueNames.push("transcript");
-        const savedHelpers = [...this.persistentScopeHelpers.values()].filter((helper) => hexDigest(helper.source) === helper.sourceHash && Number.isSafeInteger(helper.declarationSpan.start) && helper.declarationSpan.start >= 0 && helper.declarationSpan.end - helper.declarationSpan.start === helper.source.length && !declaredHere(helper.name) && !inputNames.includes(helper.name) && !localNames.includes(helper.name) && !callableNames.includes(helper.name) && !serviceNames.includes(helper.name) && !opaqueNames.includes(helper.name) && !Object.hasOwn(captureCells, helper.name));
+        const savedHelpers = [...this.persistentScopeHelpers.values()].filter((helper) => hexDigest(helper.source) === helper.sourceHash && Number.isSafeInteger(helper.declarationSpan.start) && helper.declarationSpan.start >= 0 && helper.declarationSpan.end - helper.declarationSpan.start === helper.source.length && !declaredHere(helper.name) && !inputNames.includes(helper.name) && !localNames.includes(helper.name) && !callableNames.includes(helper.name) && !serviceNames.includes(helper.name) && !opaqueNames.includes(helper.name) && !stdNames.includes(helper.name) && !Object.hasOwn(captureCells, helper.name));
         const savedHelperNames = savedHelpers.map((helper) => helper.name);
         const visibleTypes = { ...this.lam.typesSrc, ...Object.fromEntries(Object.keys(this.localTypes).map((name) => [name, ""])) };
         const currentTypes = evalTypeDeclarations(code);
@@ -233142,7 +233577,8 @@ ${paths.join("\n")}`;
           persistentHelpers: savedHelpers,
           persistentHelperNames: savedHelperNames,
           persistentTypeNames,
-          opaqueBindings: opaqueNames,
+          opaqueBindings: [...opaqueNames, ...stdNames],
+          ...stdLibrary ? { stdBindings: stdNames } : {},
           captureBindings: Object.values(captureCells).map((cell) => ({ name: cell.name, mutable: cell.mutable })),
           serviceBindings: serviceNames,
           analyze: (source3) => hooks.analyze(this, source3, [...opaqueNames, ...savedHelperNames]),
@@ -233186,9 +233622,10 @@ ${paths.join("\n")}`;
             codes: [...new Set(compiled2.diagnostics.map((item) => item.code))]
           };
         }
-        const inputs = splitScope(this.lam.args);
-        const locals = splitScope(Object.fromEntries(localNames.map((name) => [name, this.lam.let[name]])));
-        let finished;
+        const identity = evalIdentityEnabled(), scopeCopies = identity ? /* @__PURE__ */ new Map() : void 0;
+        const inputs = splitScope(this.lam.args, scopeCopies);
+        const locals = splitScope(Object.fromEntries(localNames.map((name) => [name, this.lam.let[name]])), scopeCopies);
+        let finished, scopeInputs;
         let evalStop;
         const plans = compiled2.plans ?? [];
         const origin = toolCallId && this.runtime.currentCallId ? {
@@ -233337,8 +233774,14 @@ ${paths.join("\n")}`;
           finiteAsync: hooks.finiteAsync,
           guard: hooks.guard,
           iterateOn: (step, initial, ...args) => hooks.iterateOn(this, step, initial, ...args),
+          // Each std combinator runs in the frame of the code calling it (this call, or a combinator's span when nested),
+          // so its std:<name> span and child calls nest under this call.
+          std: Object.fromEntries(stdNames.map((name) => [name, (...args) => runInFrame(currentFrame() ?? this.runtime.frame, () => stdLibrary[name](...args))])),
           finish: (value) => {
             finished = value;
+          },
+          scopeInputs: (value) => {
+            scopeInputs = value;
           }
         };
         const prologue = [
@@ -233352,6 +233795,7 @@ ${paths.join("\n")}`;
           ...contextBinding ? ["const NatlangContext = __live.NatlangContext;"] : [],
           ...assumeBinding ? ["const assume = (value: any, predicate: string | string[]) => __live.assume(value, predicate);"] : [],
           ...decideBinding ? ["const decide = (fn: any, ...args: any[]) => __live.decide(fn, args);"] : [],
+          ...stdNames.map((name) => `const ${name} = __live.std.${name};`),
           ...finishers.map((name) => `const ${name} = (value?: unknown, status: string = 'success', reason?: string) => { __live.request(${JSON.stringify(name)}, { value, status, reason }); };`)
         ].join("\n");
         const source2 = `${SCOPE_RUNTIME_PRELUDE}${prologue}
@@ -233384,7 +233828,9 @@ return await ${compiled2.entrypoint}(Object.assign({}, self.inputs, __live.input
               code: "bad-action",
               expected: "named eval bindings; wrap a final comma expression in parentheses"
             }]);
-          const output = { ...hostCopy({ result: raw.result, bindings: raw.bindings }), captures: raw.captures };
+          const inputParts = /* @__PURE__ */ new Map();
+          if (identity) mapCopiedParts(inputParts, scopeInputs, this.lam.args);
+          const output = { ...hostCopy({ result: raw.result, bindings: raw.bindings }, inputParts), captures: raw.captures };
           const thenable = (value) => !!value && (typeof value === "object" || typeof value === "function") && typeof value.then === "function";
           const unsettled = [
             ["the result", output.result],
@@ -233416,7 +233862,9 @@ return await ${compiled2.entrypoint}(Object.assign({}, self.inputs, __live.input
               }
             }
             inferred[name] = type;
-            staged.push([name, type, coerce(value, type, this.env, `let/${name}`, { preserveRecordExtras: true, functions: "keep" })]);
+            this.bindLocalTypeNames(type, localTypes);
+            const coerced = coerce(value, type, this.env, `let/${name}`, { preserveRecordExtras: true, functions: "keep" });
+            staged.push([name, type, identity ? withSourceIdentity(value, coerced) : coerced]);
           }
           let functionResult, notResult = "";
           if ((raw.returned || complete) && this.lam.type.kind === "lambda") try {
@@ -233819,20 +234267,20 @@ function orderedTools(tools) {
 function modelTurnsSoFar(messages) {
   return messages.filter((message2) => message2.role === "assistant" && !(message2.tool_calls ?? []).some((call) => String(call.id).startsWith("scope_"))).length;
 }
-function inputsListing(session, views = {}) {
+function inputsListing(session, views = {}, sealed) {
   const lam = session.lam;
   if (lam.type.kind !== "lambda") return "{}";
   session.markUntrusted();
   const root2 = lam.projectTransaction?.folder;
   return lam.type.params.fields.map((field) => {
     const value = Object.hasOwn(lam.args, field.name) ? lam.args[field.name] : void 0;
-    const shown = views[field.name] ? neuraleseSentinel(views[field.name]) + viewNote(field.name) : renderValue(value, {
+    const text3 = () => renderValue(value, {
       root: root2,
-      holder: field.name,
-      budget: scopeValueChars(session),
+      ...valueDisplay(session, sealed, "arg", field.name),
       liveIdentity: session.runtime.displayLiveId,
       untrusted: session.runtime.untrusted
     });
+    const shown = views[field.name] ? neuraleseSentinel(views[field.name]) + (sealed ? viewNote() + "\n" + text3() : viewNote(field.name)) : text3();
     const opening = value instanceof FileHandle && value.folder === root2 ? (() => {
       const stat = root2.listFiles().find((entry) => entry.path === value.path);
       if (!stat || stat.bytes > 4e3) return "  // Read this file with read_file or file.readText() before answering.";
@@ -233846,6 +234294,35 @@ ${JSON.stringify(new TextDecoder("utf-8", { fatal: true }).decode(root2.readByte
     })() : "";
     return listingLine(field.name, formatType(field.type) + (field.optional ? " | undefined" : ""), shown) + opening;
   }).join("\n");
+}
+function sealedBudgets(items, total, render) {
+  const out = /* @__PURE__ */ new Map();
+  if (!Number.isFinite(total)) {
+    for (const [key] of items) out.set(key, Infinity);
+    return out;
+  }
+  const needs = items.map(([, value]) => {
+    const text3 = render(value, total);
+    return /<<(?:cut off:|inspection limit)/.test(text3) ? Infinity : text3.length;
+  });
+  let left = total, open = items.map((_10, index) => index);
+  while (open.length) {
+    const share = Math.floor(left / open.length);
+    const fit = open.filter((index) => needs[index] <= share);
+    if (!fit.length) {
+      for (const index of open) out.set(items[index][0], Math.max(SCOPE_VALUE_CHARS, share));
+      break;
+    }
+    for (const index of fit) {
+      out.set(items[index][0], total);
+      left -= needs[index];
+    }
+    open = open.filter((index) => needs[index] > share);
+  }
+  return out;
+}
+function valueDisplay(session, sealed, kind, name) {
+  return sealed ? { budget: sealed.get(`${kind}:${name}`) ?? scopeValueChars(session), whole: true } : { holder: name, budget: scopeValueChars(session) };
 }
 function listingLine(name, type, shown) {
   return `${name}: ${type} = ${shown}`;
@@ -233943,7 +234420,7 @@ function renderValue(value, options = {}) {
   if (value === void 0) return "undefined";
   const requested = options.budget ?? SHOWN_CHARS;
   const budget = Number.isFinite(requested) ? Math.max(0, requested) : Infinity;
-  return scopeExpression(value, options.root, options.holder, budget, { nodes: 0, depth: 0, untrusted: options.untrusted }) ?? previewValue(value, options.holder, options.liveIdentity);
+  return scopeExpression(value, options.root, options.holder, budget, { nodes: 0, depth: 0, untrusted: options.untrusted, whole: options.whole }) ?? previewValue(value, options.holder, options.liveIdentity);
 }
 function adapterCells(lam) {
   const out = [];
@@ -234070,7 +234547,7 @@ function scopeExpression(value, root2, holder, budget = SHOWN_CHARS, state = { n
     const entries = [];
     let fieldCount = 0;
     for (const key in value) if (Object.hasOwn(value, key)) {
-      if (entries.length < (Number.isFinite(budget) ? 24 : 8192)) entries.push([key, value[key]]);
+      if (entries.length < (Number.isFinite(budget) && !state.whole ? 24 : 8192)) entries.push([key, value[key]]);
       fieldCount++;
     }
     if (Number.isFinite(budget) && budget < 128 && entries.length > 2)
@@ -234088,7 +234565,7 @@ function scopeExpression(value, root2, holder, budget = SHOWN_CHARS, state = { n
     });
     const budgets = fields.map(() => budget);
     if (Number.isFinite(budget)) {
-      const probe = { nodes: state.nodes, depth: state.depth, untrusted: state.untrusted };
+      const probe = { nodes: state.nodes, depth: state.depth, untrusted: state.untrusted, whole: state.whole };
       const needs = fields.map((field) => {
         const text3 = scopeExpression(field.item, root2, field.holder, Math.max(0, available), probe);
         return text3 === void 0 ? 0 : text3.length;
@@ -234425,22 +234902,22 @@ ${notes}` : opening;
       purpose(session) {
         return operatorPurpose(typeof session.lam.body === "string" ? session.lam.body : "");
       }
-      async views(session) {
+      async views(session, sealed) {
         const view = this.options.neuralese?.view;
         const lam = session.lam;
+        const cut = (name, value) => renderValue(value, {
+          root: lam.projectTransaction?.folder,
+          ...valueDisplay(session, sealed, "arg", name),
+          liveIdentity: session.runtime.displayLiveId,
+          untrusted: session.runtime.untrusted
+        }).includes("<<cut off:");
         if (this.options.neuralese?.capture && supportsNeuralese(this.driver) && lam.type.kind === "lambda") {
           const root3 = lam.projectTransaction?.folder;
           const out2 = {};
           for (const field of lam.type.params.fields) {
             if (!Object.hasOwn(lam.args, field.name)) continue;
             const value = lam.args[field.name];
-            if (value instanceof FileHandle || !renderValue(value, {
-              root: root3,
-              holder: field.name,
-              budget: scopeValueChars(session),
-              liveIdentity: session.runtime.displayLiveId,
-              untrusted: session.runtime.untrusted
-            }).includes("<<cut off:")) continue;
+            if (value instanceof FileHandle || !cut(field.name, value)) continue;
             let text3;
             try {
               text3 = JSON.stringify(value);
@@ -234463,13 +234940,7 @@ ${notes}` : opening;
         for (const field of lam.type.params.fields) {
           if (!Object.hasOwn(lam.args, field.name)) continue;
           const value = lam.args[field.name];
-          if (!renderValue(value, {
-            root: root2,
-            holder: field.name,
-            budget: scopeValueChars(session),
-            liveIdentity: session.runtime.displayLiveId,
-            untrusted: session.runtime.untrusted
-          }).includes("<<cut off:")) continue;
+          if (!cut(field.name, value)) continue;
           let text3;
           try {
             text3 = JSON.stringify(value);
@@ -235426,7 +235897,7 @@ ${notes}` : opening;
        * The opening eval: declarations of everything already in scope, as if the model had written them.
        * Values appear as literals (cut off when large); live objects, services and the folder as comments.
        */
-      scopeReading(session, views = {}) {
+      scopeReading(session, views = {}, sealed) {
         const lam = session.lam;
         if (lam.type.kind !== "lambda") return;
         session.markUntrusted();
@@ -235435,14 +235906,15 @@ ${notes}` : opening;
         const section = (heading, body) => {
           if (body.length) lines.push(...lines.length ? [""] : [], heading, ...body);
         };
-        const declared = (keyword, name, type, value, note2 = "") => {
+        const declared = (keyword, name, type, value, note2 = "", kind = "capture") => {
           const shown = /^[a-z]+$/.test(type) && !["string", "number", "boolean", "null"].includes(type) ? "unknown" : type;
+          const display = valueDisplay(session, sealed, kind, name);
           const expression = scopeExpression(
             value,
             root2,
-            name,
-            scopeValueChars(session),
-            { nodes: 0, depth: 0, untrusted: session.runtime.untrusted }
+            display.holder,
+            display.budget,
+            { nodes: 0, depth: 0, untrusted: session.runtime.untrusted, whole: display.whole }
           );
           names.push(name);
           return expression === void 0 ? `declare ${keyword === "let" ? "let" : "const"} ${name}: ${shown};  // live value ${previewValue(value, name, session.runtime.displayLiveId)}${note2}` : `${keyword} ${name}: ${shown} = ${expression};${note2}`;
@@ -235481,11 +235953,11 @@ ${notes}` : opening;
           }
           return [declared("const", cell.name, cell.type, value, `  // from skill ${cell.skill}`)];
         }));
-        section("// Your variables from earlier in this call:", Object.entries(lam.let).map(([name, value]) => declared(session.localMutable(name) ? "let" : "const", name, formatType(lam.letTypes[name]), value)));
+        section("// Your variables from earlier in this call:", Object.entries(lam.let).map(([name, value]) => declared(session.localMutable(name) ? "let" : "const", name, formatType(lam.letTypes[name]), value, "", "let")));
         if (lam.return !== MISSING)
           section("// Your staged result:", [`// ${renderValue(lam.return, { root: root2, liveIdentity: session.runtime.displayLiveId, untrusted: session.runtime.untrusted })}`]);
         if (!lines.length) return;
-        return { code: lines.join("\n"), text: (params.length ? inputsListing(session, views) + "\n" : "") + (names.length ? `Declared ${names.join(", ")} for the rest of this call.` : "ok") };
+        return { code: lines.join("\n"), text: (params.length ? inputsListing(session, views, sealed) + "\n" : "") + (names.length ? `Declared ${names.join(", ")} for the rest of this call.` : "ok") };
       }
       missing(session) {
         const lam = session.lam;
@@ -235540,6 +236012,48 @@ ${notes}` : opening;
         if (!failures.length && lam.ensures) failures.push(...await lam.ensures(value));
         return failures.length ? failures : void 0;
       }
+      /** The driver's scorer for this agent's readouts: none when a bounded graph budget routes them through generation. */
+      readoutScorer() {
+        const bounded = this.options.modelBudget?.maxRequests !== void 0 || this.options.modelBudget?.maxTokens !== void 0;
+        return bounded ? void 0 : decisionScorer(this.driver);
+      }
+      /** Whether `decisionReadout` answers this call (no tools: it cannot read its eval scope). Mirrors its conditions. */
+      answeredByReadout(session) {
+        const lam = session.lam;
+        const wanted = lam.readout === "decision" || lam.readout === "instant" || this.options.decisionReadout === "finite-returns";
+        if (!wanted || this.options.fallbacks?.length || lam.type.kind !== "lambda" || lam.subtype !== "function" || lam.projectTransaction) return false;
+        let domain;
+        try {
+          domain = decisionDomain(lam.type.returns, session.env);
+        } catch {
+          return false;
+        }
+        return !!domain && domain.size >= 2 && (!!this.readoutScorer() || this.options.decisionGeneration !== "tool-loop");
+      }
+      /**
+       * The value budgets of a call that cannot read its scope (`SealedValues`), or undefined when it can (a tool loop with
+       * eval) or `NATLANG_READOUT_WHOLE_VALUES=0`. Every value its opening shows shares `sealedValuesChars(contextTokens)`.
+       */
+      sealedValues(session, contextTokens) {
+        if (!sealedValuesEnabled() || !this.answeredByReadout(session)) return void 0;
+        const lam = session.lam;
+        if (lam.type.kind !== "lambda") return void 0;
+        const items = [];
+        for (const field of lam.type.params.fields) if (Object.hasOwn(lam.args, field.name)) items.push([`arg:${field.name}`, lam.args[field.name]]);
+        for (const cell of Object.values(lam.captures ?? {})) {
+          const value = capturedValue(cell);
+          if (!isAdapterValue(value)) items.push([`capture:${cell.name}`, value]);
+        }
+        for (const [name, value] of Object.entries(lam.let)) items.push([`let:${name}`, value]);
+        const root2 = lam.projectTransaction?.folder;
+        return sealedBudgets(items, sealedValuesChars(contextTokens), (value, budget) => renderValue(value, {
+          root: root2,
+          budget,
+          whole: true,
+          liveIdentity: session.runtime.displayLiveId,
+          untrusted: session.runtime.untrusted
+        }));
+      }
       /**
        * Answer a finite-typed call by scoring each allowed value as the reply to its opening (native/decision.ts).
        * Up to DECISION_JOINT_OPTIONS values are scored together, each the whole reply; a larger record type is scored field
@@ -235553,8 +236067,7 @@ ${notes}` : opening;
         const domain = decisionDomain(lam.type.returns, session.env);
         if (domain?.size === 0) return "decision-empty-domain: the result type has no possible value.";
         const callId = session.runtime.currentCallId ?? null;
-        const bounded = this.options.modelBudget?.maxRequests !== void 0 || this.options.modelBudget?.maxTokens !== void 0;
-        const decide2 = bounded ? void 0 : decisionScorer(this.driver);
+        const decide2 = this.readoutScorer();
         if (!domain || domain.size < 2 || !decide2 && this.options.decisionGeneration === "tool-loop") {
           if (lam.readout === "decision" || lam.readout === "instant") session.runtime.trace.emit("decision_readout", {
             call_id: callId,
@@ -236136,9 +236649,10 @@ ${notes}` : opening;
           allowAdHoc: canGenerateNl(session.runtime.frame),
           rendering: this.options.promptRendering
         });
-        const views = await this.views(session);
+        const sealed = this.sealedValues(session, budget);
+        const views = await this.views(session, sealed);
         const openingMessages = () => {
-          const reading = this.scopeReading(session, views);
+          const reading = this.scopeReading(session, views, sealed);
           const scopeOpening = withCallNotes(this.scopeOpening(session), notes);
           if (session.lam.skills?.listing) for (const skill of session.lam.skills.inventory ?? [])
             session.runtime.trace.emit("skill_use", {
@@ -237000,6 +237514,7 @@ function evalDeclarations(session, bindings2 = []) {
     returns: lam.type.kind === "lambda" ? formatType(lam.type.returns) : void 0,
     globals: session.runtime.environment.globalBindings,
     checkUnknownBindings: session.runtime.options.checkEvalBindings,
+    std: session.evalStdBindings.filter((name) => !bindings2.includes(name)),
     // decide already has a typed intrinsic declaration; keep its decision-record checks.
     opaque: bindings2.filter((name) => name !== "decide" && !inputs.some((item) => item.name === name) && !Object.hasOwn(lam.let, name) && !Object.values(lam.captures ?? {}).some((cell) => cell.name === name) && !Object.hasOwn(codebase, name) && !Object.hasOwn(session.availableServices(), name))
   };
@@ -238756,7 +239271,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       if (!(measure < same.measure)) throw new NatlangRecursionError(definition.id, frame.chain, name, `\`${name}\` called itself with measure ${measure}, which is not smaller than ${same.measure} in the call it runs below; recurse only where ${JSON.stringify(definition.measure)} falls.`);
     } else {
       descent = descend(same, positional);
-      if (!descent.length) throw new NatlangRecursionError(definition.id, frame.chain, name, `\`${name}\` called itself without a smaller argument. Recurse only on a part of the input, a shorter array or string, or a smaller non-negative integer; otherwise use a bounded loop or iterateOn.`);
+      if (!descent.length) throw new NatlangRecursionError(definition.id, frame.chain, name, noSmallerArgument(name));
     }
   }
   const nlActive = declared ? {
@@ -238896,6 +239411,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       programOwner: owner,
       ...nlActive ? { nlActive } : {},
       typeAliases: definition.types,
+      ...frame.services ? { services: frame.services } : {},
       signal: frame.signal,
       abort: frame.abort,
       ...invocationSkillFiles ? { skillFiles: invocationSkillFiles } : {},
@@ -238926,7 +239442,8 @@ async function runDefinitionBody(frame, definition, positional, options, transac
         extraTransactions,
         capture,
         store,
-        item: attempt.cases[0]
+        item: attempt.cases[0],
+        siblingOrdinal
       });
       if (crisp.served) return crisp.value;
       handoff = crisp.note;
@@ -238955,7 +239472,8 @@ async function runDefinitionBody(frame, definition, positional, options, transac
             extraTransactions,
             capture,
             store,
-            item: admitted.active
+            item: admitted.active,
+            siblingOrdinal
           });
           if (crisp.served) return crisp.value;
           handoff = crisp.note;
@@ -238969,7 +239487,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     }
     const environment = task.environment();
     let runtime;
-    const services = recordingServices(checkedServices(task, frame, task.services, model, callId, (kind, data) => {
+    const services = recordingServices(checkedServices(task, frame, frame.services ?? task.services, model, callId, (kind, data) => {
       runtime?.trace.emit(kind, data);
     }, frame.signal ?? task.signal), ({ exact, ...event }) => {
       const captured = { ...event, exact, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} };
@@ -239337,16 +239855,26 @@ function caseArguments(capture, folder2) {
   return { ...capture.hostInputs, ...folder2 ? { folder: folder2.transaction.folder.root() } : {} };
 }
 async function runCrispCase(input) {
-  const { task, childFrame, callId, definition, options, inputs, folder: folder2, capture, store, item } = input;
+  const { task, frame, childFrame, callId, definition, options, inputs, folder: folder2, capture, store, item } = input;
   const args = caseArguments(capture, folder2);
   const original = { ...args };
-  const services = recordingServices(task.services, (event) => capture.effect({ ...event, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} }, "crisp"));
+  const services = recordingServices(frame.services ?? task.services, (event) => capture.effect({ ...event, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} }, "crisp"));
   let error;
+  let nativeTrace;
   try {
-    const raw = await runInFrame({ ...childFrame, services }, () => item.run(args));
-    await task.drainChildren(callId);
     const dialects = dialectBinding(task.runtime.options.neuralese);
     const node = definitionNode(definition, inputs, { ...options, dialects });
+    nativeTrace = openCrispTrace({
+      frame: input.frame,
+      callId,
+      definition: { id: definition.id, name: definition.name, revision: definition.revision ?? "", source: definition.source },
+      signature: formatType(node.type),
+      arguments: dump(node.args, true),
+      ordinal: input.siblingOrdinal
+    });
+    capture.watch(() => nativeTrace.trace.events);
+    const raw = await runInFrame({ ...childFrame, services }, () => item.run(args));
+    await task.drainChildren(callId);
     if (node.type.kind !== "lambda") throw new Error("not a function");
     const env = new TypeEnv(node.types);
     env.classes = options.classes;
@@ -239402,9 +239930,10 @@ async function runCrispCase(input) {
       name: definition.name,
       outcome: "done",
       detail: `served by compiled case ${item.hash}`,
-      events: []
+      events: nativeTrace.trace.events
     });
-    capture.finish({ outcome: "done", detail: `served by compiled case ${item.hash}`, output: value, hasOutput: true, events: [], graphChildren: task.graphChildren(callId) });
+    nativeTrace.finish("done");
+    capture.finish({ outcome: "done", detail: `served by compiled case ${item.hash}`, output: value, hasOutput: true, events: nativeTrace.trace.events, graphChildren: task.graphChildren(callId) });
     try {
       store.caseServed(item.hash, callId, false);
       if (!item.hash.startsWith("tier:") && Math.random() < capture.settings.auditRate) store.enqueue("audit", item.hash, callId);
@@ -239415,6 +239944,7 @@ async function runCrispCase(input) {
     error = caught;
   }
   await task.drainChildren(callId);
+  nativeTrace?.finish("error");
   const effects = capture.completedEffects("crisp");
   const files2 = folder2?.transaction.open ? folder2.transaction.folder.diffSync().changes.map((change) => ({ path: change.path, kind: change.kind })) : [];
   const calls = task.traces.filter((trace) => trace.parentCallId === callId).map((trace) => ({ name: trace.name, outcome: trace.outcome }));
@@ -239440,6 +239970,7 @@ var init_kernel = __esm({
   "src/runtime/kernel.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    init_crisp_trace();
     init_program();
     init_writes();
     init_hash();
@@ -239516,6 +240047,7 @@ __export(runtime_exports, {
   createNatlangRuntime: () => createNatlangRuntime,
   decideInFrame: () => decideInFrame,
   recordingServices: () => recordingServices,
+  resolveBoundFrame: () => resolveBoundFrame,
   resolveFrame: () => resolveFrame
 });
 function createNatlangRuntime(options) {
@@ -239539,10 +240071,39 @@ async function decideInFrame(frame, fn, args) {
     ...scored?.reasoned ? { reasoned: scored.reasoned } : {}
   };
 }
+function authenticatedTraceParent(runtime, frame) {
+  if (!frame?.parentCallId || frame.signal?.aborted) return;
+  const caller = frame.task.isInvocationActive(frame.parentCallId) ? frame : frame.task.activeTraceParent(frame.parentCallId);
+  const recorder = runtime.callStore();
+  return caller?.parentCallId && (!recorder || caller.task.isInvocationRecorded(caller.parentCallId)) && (caller.task.runtime === runtime || recorder && recorder === caller.task.runtime.callStore()) ? caller : void 0;
+}
+function resolveBoundFrame(owner) {
+  if (owner.task.isClosed || owner.task.signal.aborted)
+    throw new NatlangContextError("The task that owns this callable has closed or been cancelled.");
+  const current = currentFrame();
+  const local = current?.task === owner.task && !current.task.isClosed && (!current.parentCallId || current.task.isInvocationActive(current.parentCallId)) ? current : void 0;
+  const caller = local ?? authenticatedTraceParent(owner.task.runtime, current);
+  if (caller && caller.task !== owner.task) owner.task.retainClosureTraceParent(caller);
+  return {
+    ...owner,
+    parentCallId: caller?.parentCallId,
+    spanOf: caller?.spanOf,
+    chain: caller?.chain ?? [],
+    active: caller?.active,
+    nlActive: caller?.nlActive,
+    adHocDepth: caller?.adHocDepth,
+    adHocQuestions: caller?.adHocQuestions,
+    signal: caller?.signal && caller.signal !== owner.task.signal ? AbortSignal.any([owner.task.signal, caller.signal]) : owner.task.signal,
+    abort: caller?.abort,
+    readout: caller?.readout,
+    systemAddendum: void 0,
+    fusionSite: caller?.fusionSite
+  };
+}
 function resolveFrame(created) {
+  if (created) return resolveBoundFrame(created);
   const frame = currentFrame();
   if (frame && !frameClosed(frame)) return checkedInvocationFrame(frame);
-  if (created && !frameClosed(created)) return checkedInvocationFrame(created);
   if (activeTasks.size === 1) return [...activeTasks][0].frame;
   throw new NatlangContextError(activeTasks.size > 1 ? "Several natlang tasks are active and this call cannot tell which one it belongs to. Wrap the callback with runtime.bind(fn) inside the task that should own it." : void 0);
 }
@@ -239763,11 +240324,23 @@ var init_runtime2 = __esm({
       isInvocationRecorded(callId) {
         return this.liveInvocations.get(callId) === true;
       }
+      closureTraceParents = /* @__PURE__ */ new Map();
+      /** Associations are keyed by actual parent identity, never a mutable ambient parent slot. */
+      retainClosureTraceParent(parent) {
+        if (authenticatedTraceParent(this.runtime, parent) !== parent)
+          throw new NatlangContextError("A callable causal parent must be live and owned by its recorder.");
+        for (const [id3, prior] of this.closureTraceParents)
+          if (!prior.task.isInvocationActive(id3)) this.closureTraceParents.delete(id3);
+        if (parent.parentCallId) this.closureTraceParents.set(parent.parentCallId, parent);
+      }
+      traceParentFor(callId) {
+        return this.closureTraceParents.get(callId) ?? (this.traceParent?.parentCallId === callId ? this.traceParent : void 0);
+      }
       isExternalTraceParent(callId) {
-        return this.traceParent?.parentCallId === callId;
+        return !!this.traceParentFor(callId);
       }
       activeTraceParent(callId) {
-        const parent = this.traceParent;
+        const parent = this.traceParentFor(callId);
         return parent?.parentCallId === callId && !parent.signal?.aborted && parent.task.isInvocationActive(callId) ? parent : void 0;
       }
       /** Allocate a task-wide order at the actual service request boundary. */
@@ -239779,13 +240352,15 @@ var init_runtime2 = __esm({
         const children2 = this.graphChildrenByParent.get(parentId) ?? [];
         children2.push(callId);
         this.graphChildrenByParent.set(parentId, children2);
-        if (parentId === this.traceParent?.parentCallId) this.traceParent.task.registerGraphCall(callId, parentId);
+        const external = parentId ? this.traceParentFor(parentId) : void 0;
+        if (external) external.task.registerGraphCall(callId, parentId);
       }
       discardGraphCall(callId, parentId) {
         if (!parentId) return;
         const children2 = this.graphChildrenByParent.get(parentId);
         if (children2) this.graphChildrenByParent.set(parentId, children2.filter((id3) => id3 !== callId));
-        if (parentId === this.traceParent?.parentCallId) this.traceParent.task.discardGraphCall(callId, parentId);
+        const external = parentId ? this.traceParentFor(parentId) : void 0;
+        if (external) external.task.discardGraphCall(callId, parentId);
       }
       graphChildren(callId) {
         return [...this.graphChildrenByParent.get(callId) ?? []];
@@ -239829,7 +240404,8 @@ var init_runtime2 = __esm({
         return `${this.id}/${++this.callSequence}`;
       }
       reserveExecutionSiblingOrdinal(parentCallId, definitionId) {
-        if (parentCallId && parentCallId === this.traceParent?.parentCallId) return this.traceParent.task.reserveExecutionSiblingOrdinal(parentCallId, definitionId);
+        const external = parentCallId ? this.traceParentFor(parentCallId) : void 0;
+        if (external) return external.task.reserveExecutionSiblingOrdinal(parentCallId, definitionId);
         const key = `${parentCallId ?? ""}\0${definitionId}`;
         const ordinal = this.executionOccurrenceCounts.get(key) ?? 0;
         this.executionOccurrenceCounts.set(key, ordinal + 1);
@@ -239944,6 +240520,7 @@ var init_runtime2 = __esm({
         if (this.closed) return;
         this.closed = true;
         this.liveInvocations.clear();
+        this.closureTraceParents.clear();
         this.traceParent = void 0;
         if (this.timer) clearTimeout(this.timer);
         this.abort.abort(new Error("natlang task finished"));
@@ -240019,9 +240596,7 @@ var init_runtime2 = __esm({
       async run(fn, options = {}) {
         if (this.closed) throw new Error("natlang runtime is closed");
         const caller = currentFrame(), store = this.platform.contextStore;
-        const recorder = this.callStore();
-        const causalCaller = caller?.parentCallId && !caller.signal?.aborted ? caller.task.isInvocationActive(caller.parentCallId) ? caller : caller.task.activeTraceParent(caller.parentCallId) : void 0;
-        const traceParent = options.traceParent !== false && causalCaller?.parentCallId && (!recorder || causalCaller.task.isInvocationRecorded(causalCaller.parentCallId)) && (causalCaller.task.runtime === this || recorder && recorder === causalCaller.task.runtime.callStore()) ? causalCaller : void 0;
+        const traceParent = options.traceParent !== false ? authenticatedTraceParent(this, caller) : void 0;
         const task = new NatlangTask(this, options, traceParent);
         activeTasks.add(task);
         try {
@@ -240042,12 +240617,11 @@ var init_runtime2 = __esm({
       async decide(fn, ...args) {
         return this.run(() => decideInFrame(currentFrame(), fn, args));
       }
-      /** Bind a callback to the current task and scope. Bind at task scope to use it after an invocation ends;
-       * an invocation-bound callback cannot retain that invocation's expired services or trace authority. */
+      /** Retain lexical task authority while resolving causal ancestry at each callback invocation. */
       bind(fn) {
         const frame = currentFrame();
         if (!frame) throw new NatlangContextError("runtime.bind(fn) must be called inside runtime.run(...).");
-        return ((...args) => runInFrame(frame, () => fn(...args)));
+        return ((...args) => runInFrame(resolveBoundFrame(frame), () => fn(...args)));
       }
       close() {
         this.closed = true;
@@ -240114,18 +240688,27 @@ function invokeNativeEntry(record3, exportName, args, invoke) {
   }
   task.beginInvocation(callId, true);
   task.registerGraphCall(callId, frame.parentCallId);
+  const nativeTrace = openCrispTrace({
+    frame,
+    callId,
+    definition: { id: identity.id, name, revision: record3.revision, source: record3.source },
+    signature: `(${params.map((param) => `${param.name}${param.optional ? "?" : ""}: ${param.type}`).join(", ")}) => ${spec.returns}`,
+    arguments: capturedArgumentBindings(capture)
+  });
+  capture.watch(() => nativeTrace.trace.events);
   const services = recordingServices(task.services, (event) => capture.effect({
     ...event,
     ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {}
   }, "crisp"));
   const finish = (outcome, value, error) => {
     try {
+      nativeTrace.finish(outcome);
       capture.finish({
         outcome,
         detail: error instanceof Error ? error.message : error === void 0 ? "" : String(error),
         output: value,
         hasOutput: outcome === "done",
-        events: [],
+        events: nativeTrace.trace.events,
         graphChildren: task.graphChildren(callId)
       });
     } finally {
@@ -240158,6 +240741,7 @@ var init_native_entry = __esm({
     init_context();
     init_runtime2();
     init_graph();
+    init_crisp_trace();
   }
 });
 
@@ -240218,12 +240802,7 @@ function defineChild(target, name, value) {
 function startCall(meta, args, at) {
   let started;
   const call = CallPromise.resolve((async () => {
-    const bound = meta.bound ?? resolveFrame(meta.created);
-    const current = currentFrame();
-    const same = current && current.task === bound.task && current.parentCallId === bound.parentCallId;
-    const signal = same && current.signal && current.signal !== bound.signal ? current.signal : void 0;
-    const readout = same && current.readout !== bound.readout ? current.readout : void 0;
-    const frame = signal || readout ? { ...bound, ...signal ? { signal } : {}, ...readout ? { readout } : {} } : bound;
+    const frame = meta.bound ? resolveBoundFrame(meta.bound) : resolveFrame(meta.created);
     return started = meta.invoke(args, frame, at);
   })());
   if (started && typeof started === "object") startedCalls.set(call, started);
@@ -240308,7 +240887,7 @@ function makeCallable(meta) {
   if (meta.definition.subtype === "directory-reducer")
     Object.defineProperty(fn, APPLY_TO_FOLDER, { value: async (folder2, args) => meta.invoke(
       [folder2, ...args],
-      meta.bound ?? resolveFrame(),
+      meta.bound ? resolveBoundFrame(meta.bound) : resolveFrame(),
       void 0,
       { transaction: await folder2.beginTransaction(true), mode: "apply" }
     ) });
@@ -240382,13 +240961,13 @@ function itemValue(item, level, bound, home) {
 }
 function moduleValue(record3, level, bound, home) {
   const instance = () => {
-    const platform = currentFrame()?.task.runtime.platform ?? home;
+    const platform = bound?.task.runtime.platform ?? currentFrame()?.task.runtime.platform ?? home;
     if (!platform) throw new NatlangContextError();
     return moduleRealmUsesAsync(platform) ? moduleInstanceAsync(platform, record3, level) : moduleInstance(platform, record3, level);
   };
-  const enter = (fn) => bound ? runInFrame(bound, fn) : fn();
+  const enter = (fn) => bound ? runInFrame(resolveBoundFrame(bound), fn) : fn();
   const invoke = (exportName, args) => enter(() => {
-    recordSkillHelperUse(record3.source, exportName, bound ?? currentFrame());
+    recordSkillHelperUse(record3.source, exportName, currentFrame());
     const invokeExport = (exports) => {
       const target = exports[exportName];
       if (typeof target !== "function") throw new TypeError(
@@ -240398,7 +240977,7 @@ function moduleValue(record3, level, bound, home) {
     };
     const value = instance();
     const result = value instanceof Promise ? value.then(invokeExport) : invokeExport(value);
-    const frame = bound ?? currentFrame();
+    const frame = currentFrame();
     if (!frame?.task.runtime.options.traceStepStates) return result;
     const noteState = (state) => {
       try {
@@ -240416,10 +240995,10 @@ function moduleValue(record3, level, bound, home) {
     if (name === "default") continue;
     if (RESERVED_CALLABLE_PROPERTIES.has(name))
       throw new TypeError(reservedNameMessage(name, "natlang child item"));
-    Object.defineProperty(node, name, spec.kind === "function" ? { value: (...args) => invoke(name, args), enumerable: true } : { get: () => {
+    Object.defineProperty(node, name, spec.kind === "function" ? { value: (...args) => invoke(name, args), enumerable: true } : { get: () => enter(() => {
       const value = instance();
       return value instanceof Promise ? value.then((exports) => exports[name]) : value[name];
-    }, enumerable: true });
+    }), enumerable: true });
   }
   attachChildren(node, record3.codebase, bound, home);
   return typeof node === "function" ? node : Object.freeze(node);
@@ -240759,7 +241338,7 @@ Stop when: ${context.predicateInstructions}` : "");
         return this;
       }
       until(done) {
-        const frame = this.frame ?? currentFrame() ?? resolveFrame();
+        const frame = this.frame ? resolveBoundFrame(this.frame) : resolveFrame();
         return frame.task.track(this.run(done, async () => {
         }, currentFrame()?.signal), frame.parentCallId);
       }
@@ -240813,7 +241392,7 @@ Stop when: ${context.predicateInstructions}` : "");
       async run(done, emitStream, signal) {
         if (this.started) throw new Error("an Iteration can be started only once; call iterateOn again for another run");
         this.started = true;
-        const base = this.frame ?? currentFrame() ?? resolveFrame();
+        const base = this.frame ? resolveBoundFrame(this.frame) : resolveFrame();
         const frame = signal ? { ...base, signal } : base;
         const task = frame.task;
         const iterationId = `iter-${Math.random().toString(36).slice(2, 10)}`;
@@ -240915,7 +241494,7 @@ Stop when: ${context.predicateInstructions}` : "");
         const check = async () => {
           try {
             if (doneMeta) {
-              const base2 = doneMeta.bound ?? frame;
+              const base2 = doneMeta.bound ? resolveBoundFrame(doneMeta.bound) : frame;
               return await doneMeta.invoke([state], { ...base2, systemAddendum: predicatePrompt(steps.length, unchanged()) }) === true;
             }
             return await runInFrame(frame, () => done(state)) === true;
@@ -242202,6 +242781,43 @@ function hostCopy(value, seen = /* @__PURE__ */ new Map()) {
   );
   return out;
 }
+function mapCopiedParts(seen, copied, original, top = true) {
+  if (!copied || !original || typeof copied !== "object" || typeof original !== "object" || seen.has(copied) || isLive(original) || isPending(original) || original instanceof Folder || original instanceof FolderHandle || original instanceof FileHandle) return;
+  if (Array.isArray(copied) !== Array.isArray(original)) return;
+  if (Array.isArray(copied)) {
+    const items = original;
+    if (copied.length !== items.length) return;
+    seen.set(copied, original);
+    for (let i = 0; i < copied.length; i++) mapCopiedParts(seen, copied[i], items[i], false);
+    return;
+  }
+  if (!plain2(original)) return;
+  const keys3 = Object.keys(copied);
+  if (!top && (keys3.length !== Object.keys(original).length || keys3.some((key) => !Object.hasOwn(original, key)))) return;
+  if (!top) seen.set(copied, original);
+  for (const key of keys3) if (Object.hasOwn(original, key))
+    mapCopiedParts(seen, copied[key], original[key], false);
+}
+function withSourceIdentity(source2, coerced) {
+  const keep = (from, to2) => {
+    if (Object.is(from, to2) || !from || !to2 || typeof from !== "object" || typeof to2 !== "object") return to2;
+    if (Array.isArray(from) && Array.isArray(to2)) {
+      if (from.length !== to2.length) return to2;
+      const items = to2.map((item, i) => keep(from[i], item));
+      return items.every((item, i) => item === from[i]) ? from : items.every((item, i) => item === to2[i]) ? to2 : items;
+    }
+    if (Array.isArray(from) || Array.isArray(to2) || !plain2(from) || !plain2(to2) || isLive(to2) || isPending(to2)) return to2;
+    const keys3 = Object.keys(to2), fromKeys = Object.keys(from);
+    const fields = keys3.map((key) => keep(from[key], to2[key]));
+    if (keys3.length === fromKeys.length && keys3.every((key, i) => key === fromKeys[i] && fields[i] === from[key]))
+      return from;
+    if (fields.every((field, i) => field === to2[keys3[i]])) return to2;
+    const out = {};
+    keys3.forEach((key, i) => Object.defineProperty(out, key, { value: fields[i], enumerable: true, writable: true, configurable: true }));
+    return out;
+  };
+  return keep(source2, coerced);
+}
 function closestMiss(misses, path2) {
   let best;
   for (const miss of misses) {
@@ -242531,7 +243147,7 @@ function unboundParts(node, env, path2) {
   }
   return out;
 }
-function dump(value, full = false) {
+function dump(value, full = false, shared) {
   if (value === MISSING) return null;
   if (value instanceof Folder || value instanceof FolderHandle || value instanceof FileHandle)
     return { $host: {
@@ -242540,9 +243156,20 @@ function dump(value, full = false) {
       reconstructable: false
     } };
   if (isLive(value)) return { $live: { type: liveLabel(value), id: liveId(value) } };
-  if (Array.isArray(value)) return value.map((item) => dump(item, full));
-  if (value && typeof value === "object" && !isPending(value))
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, dump(child, full)]));
+  if (shared?.has(value)) return shared.get(value);
+  if (Array.isArray(value)) {
+    const out = [];
+    shared?.set(value, out);
+    for (const item of value) out.push(dump(item, full, shared));
+    return out;
+  }
+  if (value && typeof value === "object" && !isPending(value)) {
+    const out = {};
+    shared?.set(value, out);
+    for (const [key, child] of Object.entries(value))
+      Object.defineProperty(out, key, { value: dump(child, full, shared), enumerable: true, writable: true, configurable: true });
+    return out;
+  }
   if (!isPending(value)) return value;
   const body = { type: formatType(value.type) };
   if (Object.keys(value.typesSrc).length) body.types = value.typesSrc;
@@ -260236,6 +260863,7 @@ function instrumentMemoryChecks(source2, check = MEMORY_CHECK, kind = "ts") {
 }
 
 // src/native/eval-compile.ts
+var PRELUDE_BINDINGS = [...PRELUDE.matchAll(/^const ([A-Za-z$][\w$]*) =/gm)].map((match2) => match2[1]);
 var BODY_FUNCTION = "__natlang_body";
 function lowerStaticImports(source2, validateImport) {
   const file = import_typescript23.default.createSourceFile("imports.ts", source2, import_typescript23.default.ScriptTarget.Latest, true);
@@ -260320,7 +260948,7 @@ function constructorRealm(newFunction, name = "natlang") {
   return { call: (body, parameters, args) => newFunction(`"use strict";
 ${body}`, name, ...parameters)(...args) };
 }
-function portable2(value, seen = /* @__PURE__ */ new Set(), path2 = "$", scope = false) {
+function portable(value, seen = /* @__PURE__ */ new Set(), path2 = "$", scope = false, shared) {
   if (scope && value === void 0) return value;
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number" && Number.isFinite(value) && (!Number.isInteger(value) || Number.isSafeInteger(value))) return value;
@@ -260329,9 +260957,11 @@ function portable2(value, seen = /* @__PURE__ */ new Set(), path2 = "$", scope =
   if (typeof value.then === "function")
     throw new TypeError("await the asynchronous imported function call");
   if (seen.has(value)) throw new TypeError("eval result contains a cycle");
+  if (shared?.has(value)) return shared.get(value);
   seen.add(value);
   if (Array.isArray(value)) {
-    const out2 = value.map((item, index) => portable2(item, seen, `${path2}[${index}]`, scope));
+    const out2 = value.map((item, index) => portable(item, seen, `${path2}[${index}]`, scope, shared));
+    shared?.set(value, out2);
     seen.delete(value);
     return out2;
   }
@@ -260341,12 +260971,13 @@ function portable2(value, seen = /* @__PURE__ */ new Set(), path2 = "$", scope =
   if (proto !== null && (Object.getPrototypeOf(proto) !== null || proto.constructor?.name !== "Object"))
     throw new TypeError("eval result contains a native class instance");
   const out = /* @__PURE__ */ Object.create(null);
-  for (const [key, child] of Object.entries(value)) out[key] = portable2(child, seen, `${path2}.${key}`, scope);
+  for (const [key, child] of Object.entries(value)) out[key] = portable(child, seen, `${path2}.${key}`, scope, shared);
+  shared?.set(value, out);
   seen.delete(value);
   return out;
 }
 function snapshot2(value) {
-  const copy = portable2(value, /* @__PURE__ */ new Set(), "$", true);
+  const copy = portable(value, /* @__PURE__ */ new Set(), "$", true, /* @__PURE__ */ new Map());
   function freeze(item) {
     if (item && typeof item === "object") {
       for (const child of Object.values(item)) freeze(child);
@@ -260374,8 +261005,9 @@ var RealmEnvironment = class {
   scopeCapabilities;
   disposed = false;
   retained;
+  /** Names eval code may use besides its scope: the crisp prelude every eval here compiles with, and the realm's globals. */
   get globalBindings() {
-    return this.options.globalBindings ?? [];
+    return [...PRELUDE_BINDINGS, ...this.options.globalBindings ?? []];
   }
   /** The eval memory bound in MB, or undefined when evals are unbounded. */
   get memoryLimitMb() {
@@ -260456,7 +261088,7 @@ var RealmEnvironment = class {
       if (value !== null && typeof value === "object" && typeof value.then === "function")
         return UNAWAITED_DISPLAY;
       try {
-        const data = portable2(value);
+        const data = portable(value);
         return isNeuraleseRef(data) ? neuraleseDisplayText(data) : JSON.stringify(data, (_key, item) => isNeuraleseRef(item) ? neuraleseDisplayText(item) : item);
       } catch {
         return String(value);
@@ -262374,11 +263006,11 @@ function compileProjectInSession(options, files2) {
   const withNeutral = (specifiers) => [.../* @__PURE__ */ new Set([...specifiers, NEUTRAL_RUNTIME_SPECIFIER])];
   const bound = options.runtimeModule && { ...options.runtimeModule, specifiers: withNeutral(options.runtimeModule.specifiers) };
   const sibling = (path2, from, to2) => path2 && from.test(path2) ? path2.replace(from, to2) : void 0;
-  const stdModule = bound && (bound.std ?? (() => {
+  const stdModule2 = bound && (bound.std ?? (() => {
     const url = sibling(bound.url, /\/index\.js$/, "/std/index.js"), types3 = sibling(bound.types, /([\\/])index\.d\.ts$/, "$1std$1index.d.ts");
     return url && types3 && fs2.isFile(types3) ? { url, types: types3, path: sibling(bound.path, /([\\/])index\.js$/, "$1std$1index.js") } : void 0;
   })());
-  const stdSpecifiers = stdModule ? options.runtimeModule.specifiers.map((specifier) => `${specifier}/std`) : [];
+  const stdSpecifiers = stdModule2 ? options.runtimeModule.specifiers.map((specifier) => `${specifier}/std`) : [];
   if (options.runtimeTypeRoots?.length) {
     const resolutionHost = import_typescript28.default.sys ?? { fileExists: (path2) => fs2.isFile(path2), readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0 };
     const missing = (compilerOptions.types ?? ["node"]).some((name) => !import_typescript28.default.resolveTypeReferenceDirective(name, joinSourcePath(root2, "index.ts"), compilerOptions, resolutionHost).resolvedTypeReferenceDirective);
@@ -262403,7 +263035,7 @@ function compileProjectInSession(options, files2) {
   if (bound) compilerOptions.paths = {
     ...compilerOptions.paths ?? {},
     ...Object.fromEntries(bound.specifiers.map((specifier) => [specifier, [bound.types]])),
-    ...Object.fromEntries(stdSpecifiers.map((specifier) => [specifier, [stdModule.types]]))
+    ...Object.fromEntries(stdSpecifiers.map((specifier) => [specifier, [stdModule2.types]]))
   };
   const runtimeSpecifier = bound?.url ?? options.runtimeSpecifier ?? detectRuntimeSpecifier(fs2, rootNames) ?? "@natlang/node";
   const declarationSpecifier = bound?.specifiers[0] ?? runtimeSpecifier;
@@ -262696,7 +263328,7 @@ function compileProjectInSession(options, files2) {
       const commonjs = source2.impliedNodeFormat === import_typescript28.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript28.default.ModuleKind.CommonJS;
       const rewriteFor = new Map([
         ...[...rewrite.keys()].map((specifier) => [specifier, specifierFor(commonjs)]),
-        ...stdSpecifiers.map((specifier) => [specifier, commonjs && stdModule.path ? stdModule.path : stdModule.url])
+        ...stdSpecifiers.map((specifier) => [specifier, commonjs && stdModule2.path ? stdModule2.path : stdModule2.url])
       ]);
       const contextIndex = contextDir ? contextIds.get(contextDir) : void 0;
       let contextName = "__natlang_context_records";

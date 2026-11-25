@@ -13,6 +13,11 @@ export declare class ModuleUnavailableError extends Error {
 }
 export declare function registerShippedModule(specifiers: readonly string[], factory: () => unknown): void;
 export declare function hasBuiltinModule(platform: Platform, specifier: string): boolean;
+/**
+ * The standard library this platform serves (its own `@natlang/<platform>/std`, else the shipped one), or undefined when
+ * no entry loaded it. Eval's std built-ins (native/runtime.ts) are its exports, the same instance callable folders import.
+ */
+export declare function stdModule(platform?: Platform): Record<string, unknown> | undefined;
 export declare function builtinModule(platform: Platform, specifier: string): unknown;
 export declare class ModuleRealmChangedError extends Error {
     readonly code = "module-realm-changed";

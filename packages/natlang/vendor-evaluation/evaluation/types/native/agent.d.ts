@@ -84,8 +84,19 @@ export type NativeModelDriver = ((request: ModelTurnRequest, signal?: AbortSigna
 /**
  * The call's arguments as its caller gave them, as the opening eval's result shows them (read_inputs() returns
  * the same values in eval). A long value is cut off, and its name holds all of it; an argument the caller left out is undefined.
+ * For a call that cannot read its scope (`sealed`, a decision readout) each value is shown whole within its share of
+ * the context budget, and a cut's note names no variable.
  */
-export declare function inputsListing(session: NativeSession, views?: Readonly<Record<string, string>>): string;
+export declare function inputsListing(session: NativeSession, views?: Readonly<Record<string, string>>, sealed?: SealedValues): string;
+/**
+ * The character budgets of the values a call that cannot read its eval scope is shown (a decision readout offers no
+ * tools), keyed `arg:NAME`, `capture:NAME` and `let:NAME`. Such a call decides on its opening alone, so its values are
+ * shown whole as far as the context budget allows: the values share `sealedValuesChars` by water-filling (a value that
+ * fits an even share is whole, and what it leaves goes to the longer ones), and none gets less than the scope listing's
+ * SCOPE_VALUE_CHARS. Undefined for a call that reads its scope.
+ */
+export type SealedValues = ReadonlyMap<string, number>;
+export declare function sealedBudgets(items: readonly [string, unknown][], total: number, render: (value: unknown, budget: number) => string): Map<string, number>;
 /** One argument's line of the opening listing: its name, type and value as shown. */
 export declare function listingLine(name: string, type: string, shown: string): string;
 /**
@@ -115,6 +126,8 @@ export declare function renderValue(value: Value | unknown, options?: {
     root?: Folder;
     liveIdentity?: (value: object) => number;
     /** Where untrusted text came from; a string it knows is shown as a quoted data block. */ untrusted?: UntrustedRegistry;
+    /** Only the budget cuts (a call that cannot read its scope): a record shows every field the budget holds, not the
+     * listing's first 24. */ whole?: boolean;
 }): string;
 /** Bounded preview of a live host value: type, stable identity, and a short observation. */
 export declare function livePreview(value: object, identity?: (value: object) => number): string;
@@ -415,6 +428,15 @@ export declare class NativeToolAgent {
      * the failures, already traced.
      */
     private refinementGate;
+    /** The driver's scorer for this agent's readouts: none when a bounded graph budget routes them through generation. */
+    private readoutScorer;
+    /** Whether `decisionReadout` answers this call (no tools: it cannot read its eval scope). Mirrors its conditions. */
+    private answeredByReadout;
+    /**
+     * The value budgets of a call that cannot read its scope (`SealedValues`), or undefined when it can (a tool loop with
+     * eval) or `NATLANG_READOUT_WHOLE_VALUES=0`. Every value its opening shows shares `sealedValuesChars(contextTokens)`.
+     */
+    private sealedValues;
     /**
      * Answer a finite-typed call by scoring each allowed value as the reply to its opening (native/decision.ts).
      * Up to DECISION_JOINT_OPTIONS values are scored together, each the whole reply; a larger record type is scored field

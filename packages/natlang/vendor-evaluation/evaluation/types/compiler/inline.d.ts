@@ -16,7 +16,7 @@ export type InlineRebindSite = {
     captureSources: Record<string, CapturePlan['source']>;
 };
 export type NatlangDiagnostic = SourceSpan & {
-    code: 'nl-unknown-return' | 'nl-unknown-parameter' | 'nl-not-called' | 'nl-not-tag' | 'nl-shadowed' | 'nl-ambiguous-signature' | 'nl-sync-callback' | 'nl-parameter-collision' | 'nl-unknown-name' | 'nl-spread' | 'nl-const-capture-write' | 'forbidden-loop' | 'forbidden-dynamic-code' | 'recursion' | 'unbound-name' | 'callable-scope' | 'reserved-property' | 'duplicate-site' | 'iterate-step' | 'iterate-predicate' | 'module-collision' | 'frontmatter-yaml' | `TS${number}` | 'nl-undeclared-type' | 'neuralese-opaque-access' | 'neuralese-condition' | 'neuralese-untyped-literal' | 'neuralese-nested' | 'neuralese-readout-sync' | 'neuralese-crisp-result' | 'type-recursive-function' | 'neuralese-file' | 'nl-explicit-captures' | 'nl-type-arguments' | 'undeclared-field' | 'decision-compare' | 'untrusted-instruction' | 'iteration-unbounded' | 'nl-sequential-loop' | 'idiom-decision-readout' | 'idiom-fixed-cursor-iterate' | 'idiom-code-in-prose' | `idiom-review-${string}`;
+    code: 'nl-unknown-return' | 'nl-unknown-parameter' | 'nl-not-called' | 'nl-not-tag' | 'nl-shadowed' | 'nl-ambiguous-signature' | 'nl-sync-callback' | 'nl-parameter-collision' | 'nl-unknown-name' | 'nl-spread' | 'nl-const-capture-write' | 'forbidden-loop' | 'forbidden-dynamic-code' | 'recursion' | 'unbound-name' | 'callable-scope' | 'reserved-property' | 'duplicate-site' | 'iterate-step' | 'iterate-predicate' | 'module-collision' | 'frontmatter-yaml' | `TS${number}` | 'nl-undeclared-type' | 'neuralese-opaque-access' | 'neuralese-condition' | 'neuralese-untyped-literal' | 'neuralese-nested' | 'neuralese-readout-sync' | 'neuralese-crisp-result' | 'type-recursive-function' | 'neuralese-file' | 'nl-explicit-captures' | 'nl-type-arguments' | 'undeclared-field' | 'decision-compare' | 'untrusted-instruction' | 'iteration-unbounded' | 'nl-sequential-loop' | 'nl-word-capture' | 'idiom-decision-readout' | 'idiom-fixed-cursor-iterate' | 'idiom-code-in-prose' | `idiom-review-${string}`;
     /** One line: what is wrong. */
     message: string;
     /** The explanation beneath it (TypeScript's elaboration chain), when there is one. */
@@ -127,6 +127,16 @@ export type InlineAnalysisOptions = {
     /** Code outside any function may `await` (an eval cell, an ES module): a typed Neuralese readout there is not a sync readout. */
     topLevelAwait?: boolean;
 };
+/** An initializer whose every possible value is a literal written there: `'a'`, `0`, `true`, `c ? 'a' : 'b'`. */
+export declare function literalInitializer(expression: ts.Expression): boolean;
+/**
+ * The type a model is shown for a local, capture or annotation inferred from literals. `const aim = k ? 'x' : 'y'`
+ * infers `"x" | "y"`; shown as the variable's type, that lists every branch's text in each call that sees the variable
+ * (an `nl` literal built from `aim` carried every other kind's instructions in its opening). As TypeScript does for
+ * `let`, such a binding is a `string` (number, boolean). A declared type (`const k: Kind = ...`, a parameter, a field)
+ * is kept. Opt-out: NATLANG_LITERAL_CAPTURE_TYPES=1 keeps the literal types.
+ */
+export declare function shownBindingType(checker: ts.TypeChecker, type: ts.Type, declaration?: ts.Node, initializer?: ts.Expression): ts.Type;
 /** The native state ID when a template is exactly one model-written body, `${__neuralese.body("nzs1_…")}`. */
 export declare function softBodyOf(template: ts.TemplateLiteral): string | undefined;
 /** The `nl.with(…)` call when a tagged template's tag is one. */

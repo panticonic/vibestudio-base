@@ -60,8 +60,9 @@ export declare const HANDOVER_NOTE_CLOSE: string;
 export declare const LAST_TURN_NOTICE: string;
 /** The compact_history tool's result. */
 export declare const COMPACTED_RESULT = "Compacted: older outputs and code are in transcript, and your note is kept after the instructions.";
-/** The listing's note after a view of a cut-off value: the variable holds the value itself. */
-export declare const viewNote: (holder: string) => string;
+/** The listing's note after a view of a cut-off value: the variable holds the value itself. Without a holder (a call
+ * that cannot read its scope, a decision readout) the view is followed by as much of the value's text as fits. */
+export declare const viewNote: (holder?: string) => string;
 /**
  * The instructions of the view a call's opening listing shows for a value it would cut off: the purpose is the
  * receiving call, which reads the variable itself for exact details (training/neuralese view.py

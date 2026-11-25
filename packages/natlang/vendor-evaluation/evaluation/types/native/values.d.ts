@@ -106,6 +106,18 @@ export declare function scopedLiveIdentity(scope: object): (value: object) => nu
 export declare function liveLabel(value: object): string;
 /** Rebuild plain data in this realm (eval values come from the sandbox realm); live values keep identity. */
 export declare function hostCopy(value: unknown, seen?: Map<object, unknown>): unknown;
+/**
+ * Seeds `seen` (hostCopy's map) with each part of the inputs as eval saw them (`copied`, frozen there) mapped to the
+ * host's own value at the same place (`original`), so a local that holds a part of an input keeps holding that very
+ * value, as in JavaScript. Places whose shape differs (a pending call, a handle) are left out.
+ */
+export declare function mapCopiedParts(seen: Map<object, unknown>, copied: unknown, original: unknown, top?: boolean): void;
+/**
+ * `coerced` with every part that equals its `source` part replaced by the source itself. coerce builds new arrays and
+ * records; an eval local keeps the objects it held (one object held by two locals, or by a local and an input, stays
+ * one object), so identity checks keep their meaning in later evals.
+ */
+export declare function withSourceIdentity(source: unknown, coerced: Value): Value;
 export type CoerceOptions = {
     preserveRecordExtras?: boolean;
     /** `keep`: a plain function stays itself at a function-typed slot (an eval's own locals), instead of being wrapped
@@ -119,5 +131,5 @@ export declare function problems(value: Value, type: Type, env: TypeEnv, path: s
     holes: Diagnostic[];
 };
 export declare function unboundParts(node: Pending, env: TypeEnv, path: string): Diagnostic[];
-export declare function dump(value: Value, full?: boolean): unknown;
+export declare function dump(value: Value, full?: boolean, shared?: Map<object, unknown>): unknown;
 export declare function dumpState(value: Value): unknown;

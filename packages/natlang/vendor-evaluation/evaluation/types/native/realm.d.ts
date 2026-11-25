@@ -28,7 +28,11 @@ export interface Realm {
 export declare function globalBindingNames(value: object): string[];
 /** A realm over a host-provided function constructor: `newFunction(body, name, ...parameterNames)`. */
 export declare function constructorRealm(newFunction: (body: string, name: string, ...parameters: string[]) => (...args: unknown[]) => unknown, name?: string): Realm;
-export declare function portable(value: unknown, seen?: Set<object>, path?: string, scope?: boolean): unknown;
+/**
+ * A copy of plain data that holds only what eval may receive or return. `shared`, when given, keeps an object reached
+ * twice (by two names or two paths) as one copy, so the scope's aliasing survives the copy.
+ */
+export declare function portable(value: unknown, seen?: Set<object>, path?: string, scope?: boolean, shared?: Map<object, unknown>): unknown;
 /** Eval scope follows TypeScript: an absent optional property may be undefined. Published results use `portable`. */
 export declare function snapshot(value: unknown): unknown;
 /** Static configuration of a `RealmEnvironment`; what depends on the instance is a protected method a subclass overrides. */
@@ -85,6 +89,7 @@ export declare class RealmEnvironment implements EvalEnvironment {
     protected disposed: boolean;
     private retained?;
     constructor(options: RealmEnvironmentOptions);
+    /** Names eval code may use besides its scope: the crisp prelude every eval here compiles with, and the realm's globals. */
     get globalBindings(): readonly string[];
     /** The eval memory bound in MB, or undefined when evals are unbounded. */
     get memoryLimitMb(): number | undefined;

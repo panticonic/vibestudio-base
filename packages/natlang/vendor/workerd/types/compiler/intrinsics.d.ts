@@ -15,6 +15,13 @@ export declare const RESERVED_CALLABLE_PROPERTIES: ReadonlySet<string>;
 export declare const camelCaseName: (name: string) => string;
 /** One sentence for a callable name that is not a JavaScript identifier, naming the identifier to use. */
 export declare const invalidNameMessage: (name: string) => string;
+/**
+ * Words JavaScript reserves in strict-mode code, where eval and callable-folder code run: none can name a binding, so
+ * none can name a function or an argument (an argument is a binding in eval).
+ */
+export declare const JS_RESERVED_WORDS: ReadonlySet<string>;
+/** One sentence for a name that is a JavaScript reserved word, naming a rename. */
+export declare const reservedWordMessage: (name: string, what?: string) => string;
 /** One sentence for a callable name that is a function property, naming a rename. */
 export declare const reservedNameMessage: (name: string, what?: string) => string;
 /** Exact ambient declaration for the compiler-provided Neuralese type, also shown by read_code("Neuralese"). */
