@@ -312,7 +312,7 @@ export declare class NatlangPlatformUnavailableError extends Error {
 /** An ordinary TypeScript task in which natlang functions can be called. */
 export declare class NatlangTask {
     readonly runtime: NatlangRuntime;
-    private readonly traceParent?;
+    private traceParent?;
     readonly id: string;
     readonly services: Services;
     readonly serviceDeclarations: Record<string, string>;
@@ -357,6 +357,15 @@ export declare class NatlangTask {
     private callSequence;
     private effectSequence;
     private readonly graphChildrenByParent;
+    private readonly liveInvocations;
+    /** Invocation liveness is shorter than task lifetime; recorded spans additionally own durable call custody. */
+    beginInvocation(callId: string, recorded?: boolean): void;
+    markInvocationRecorded(callId: string): void;
+    endInvocation(callId: string): void;
+    isInvocationActive(callId: string): boolean;
+    isInvocationRecorded(callId: string): boolean;
+    isExternalTraceParent(callId: string): boolean;
+    activeTraceParent(callId: string): Frame | undefined;
     /** Allocate a task-wide order at the actual service request boundary. */
     nextGraphEffectOrder(): number;
     registerGraphCall(callId: string, parentId: string | null | undefined): void;
@@ -438,7 +447,8 @@ export declare class NatlangRuntime {
      * is false.
      */
     decide<A extends unknown[], T>(fn: (...args: A) => Promise<T>, ...args: A): Promise<Decision<T>>;
-    /** Bind a callback to the current task so it can call natlang functions when it runs later. */
+    /** Bind a callback to the current task and scope. Bind at task scope to use it after an invocation ends;
+     * an invocation-bound callback cannot retain that invocation's expired services or trace authority. */
     bind<F extends (...args: never[]) => unknown>(fn: F): F;
     close(): void;
 }
