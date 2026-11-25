@@ -8,6 +8,7 @@ export type SourceAttributionSpan = { id: string; start: number; end: number; bo
 export type SourceAttributionTrace = { file: string; state: string; fragment: string; spans: SourceAttributionSpan[]; truncated: boolean };
 export type SourceAttributionRoot = { ref: string; kind: string; label: string; intent: string | null; tier: string | null; externalSource: string | null };
 export type SourceAttributionEvidence = { selected: SourceAttributionSelection; trace: SourceAttributionTrace; roots: SourceAttributionRoot[] };
+export type SourceAttributionInvestigation = { files: SourceAttributionFile[]; evidence: SourceAttributionEvidence[] };
 export type SourceAttributionClaim = { fragment: string; span: string; origin: "external" | "native" | "unresolved"; intent: string | null; refs: string[] };
 export type SourceAttributionConclusion = { disposition: "supported" | "partial" | "unverifiable"; claims: SourceAttributionClaim[] };
 export type SourceAttributionReceipt = { state: string; status: "retained" | "authority-closed" | "stale"; path: string | null; sha256: string | null };
