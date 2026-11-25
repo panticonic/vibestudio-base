@@ -233528,9 +233528,33 @@ ${paths.join("\n")}`;
       scopeInitializerType(expression, locals) {
         const source2 = expression.trim();
         if (/\.(?:reduce|reduceRight)\s*\(/.test(source2)) return;
-        const directCall = /^(?:await\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\(/.exec(source2);
-        const directReturns = directCall ? returnTypeOf(this.lam.codebase, directCall[1], this.env) : void 0;
-        if (directReturns) return directReturns;
+        const parsed = import_typescript21.default.createSourceFile("initializer.ts", `(${source2}
+)`, import_typescript21.default.ScriptTarget.Latest, true, import_typescript21.default.ScriptKind.TS);
+        const statement = parsed.statements[0];
+        const unwrap3 = (node) => import_typescript21.default.isParenthesizedExpression(node) || import_typescript21.default.isAwaitExpression(node) ? unwrap3(node.expression) : node;
+        const expressionNode = statement && import_typescript21.default.isExpressionStatement(statement) ? unwrap3(statement.expression) : void 0;
+        if (expressionNode?.kind === import_typescript21.default.SyntaxKind.NullKeyword) return { kind: "prim", name: "null" };
+        if (expressionNode && (import_typescript21.default.isStringLiteral(expressionNode) || import_typescript21.default.isNoSubstitutionTemplateLiteral(expressionNode)))
+          return { kind: "prim", name: "string" };
+        if (expressionNode && import_typescript21.default.isNumericLiteral(expressionNode)) return { kind: "prim", name: "number" };
+        if (expressionNode?.kind === import_typescript21.default.SyntaxKind.TrueKeyword || expressionNode?.kind === import_typescript21.default.SyntaxKind.FalseKeyword)
+          return { kind: "prim", name: "boolean" };
+        if (expressionNode && import_typescript21.default.isConditionalExpression(expressionNode)) {
+          const branches = [expressionNode.whenTrue, expressionNode.whenFalse].map((branch) => this.scopeInitializerType(branch.getText(parsed), locals));
+          if (branches.every((branch) => branch !== void 0)) {
+            const members = branches.flatMap((branch) => branch.kind === "union" ? branch.members : [branch]);
+            const unique = [...new Map(members.map((member) => [formatType(member), member])).values()];
+            return unique.length === 1 ? unique[0] : { kind: "union", members: unique };
+          }
+          return;
+        }
+        if (expressionNode && import_typescript21.default.isCallExpression(expressionNode)) {
+          const callee = expressionNode.expression.getText(parsed);
+          if (/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(callee)) {
+            const directReturns = returnTypeOf(this.lam.codebase, callee, this.env);
+            if (directReturns) return directReturns;
+          }
+        }
         const mappedCall = /^await\s+Promise\.all\(\s*[\s\S]*?\.map\(\s*(?:async\s+)?(?:\([\w$,\s]*\)|[A-Za-z_$][\w$]*)\s*=>\s*(?:await\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\(/.exec(source2);
         let mappedReturns;
         if (mappedCall) {
