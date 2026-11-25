@@ -1,8 +1,14 @@
-import { captureExchange, type ModelCaptureSession } from "./modelTurnCapture.js";
+import {
+  captureExchange,
+  type ModelCaptureSession,
+} from "./modelTurnCapture.js";
 import type { Context } from "@panticonic/pi-ai";
 import type { ModelGatewayClient } from "@workspace/model-gateway/client";
 import type { ModelGatewayTurnOptions } from "@workspace/model-gateway/contract";
-import { LOCAL_PROVIDER_ID, type ModelCatalogEntry } from "@workspace/model-catalog/catalog";
+import {
+  LOCAL_PROVIDER_ID,
+  type ModelCatalogEntry,
+} from "@workspace/model-catalog/catalog";
 import {
   framedDecision,
   scoresFromBatchResult,
@@ -53,13 +59,13 @@ export function gatewayDriver(options: {
     signal?: AbortSignal,
     evidence?: { value?: unknown },
     capturing = false,
-    requiredModel?: string
+    requiredModel?: string,
   ) => {
     signal?.throwIfAborted();
     const entry = await resolver.resolve(model);
     if (requiredModel && entry.ref !== requiredModel)
       throw new Error(
-        `Captured teacher inference is pinned to ${requiredModel}; refusing ${entry.ref}`
+        `Captured teacher inference is pinned to ${requiredModel}; refusing ${entry.ref}`,
       );
     const api = entry.modelSpec.api;
     const context = toPiContext(request, {
@@ -68,27 +74,26 @@ export function gatewayDriver(options: {
       id: entry.id,
     });
     const turnId = nextTurnId();
+    const nativeRequest = {
+      turnId,
+      ...(request.invocation_id
+        ? { sessionId: `${turnPrefix}:${request.invocation_id}` }
+        : {}),
+      model: entry.ref,
+      context: context as unknown as Context,
+      options: turnOptions(request, entry),
+    };
+    const capturedRequest = evidence
+      ? structuredClone(nativeRequest)
+      : undefined;
+    if (evidence)
+      evidence.value = { kind: "generation", request: capturedRequest };
     const result = await gateway.turn(
-      {
-        turnId,
-        ...(request.invocation_id ? {sessionId: `${turnPrefix}:${request.invocation_id}`} : {}),
-        model: entry.ref,
-        context: context as unknown as Context,
-        options: turnOptions(request, entry),
-      },
-      signal ? { signal } : undefined
+      nativeRequest,
+      signal ? { signal } : undefined,
     );
     if (evidence)
-      evidence.value = {
-        kind: "generation",
-        request: {
-          turnId,
-          model: entry.ref,
-          context,
-          options: turnOptions(request, entry),
-        },
-        result,
-      };
+      evidence.value = { kind: "generation", request: capturedRequest, result };
     const modelTurn = piAssistantToTurn(result.message, entry.provider);
     return {
       ...modelTurn,
@@ -114,29 +119,40 @@ export function gatewayDriver(options: {
     readout: DecisionRequest,
     signal?: AbortSignal,
     evidence?: { value?: unknown },
-    requiredModel?: string
+    requiredModel?: string,
   ): Promise<DecisionScores> => {
     signal?.throwIfAborted();
     const entry = await resolver.resolve(model);
     if (requiredModel && entry.ref !== requiredModel)
       throw new Error(
-        `Captured teacher inference is pinned to ${requiredModel}; refusing ${entry.ref}`
+        `Captured teacher inference is pinned to ${requiredModel}; refusing ${entry.ref}`,
       );
     // A local model is a stock instruction model, not one natlang trained on the bare-value reply the readout asks for:
     // it is asked for, and scored on, the form it answers in (the same one natlang's own managed stock models use).
     const request = framedDecision(
       readout,
-      entry.provider === LOCAL_PROVIDER_ID ? LOCAL_DECISION_REPLY : undefined
+      entry.provider === LOCAL_PROVIDER_ID ? LOCAL_DECISION_REPLY : undefined,
     );
-    const nativeRequest={...request,turnId:nextTurnId(),model:entry.ref};
-    const scored = await gateway.score(nativeRequest, signal ? { signal } : undefined);
+    const nativeRequest = {
+      ...request,
+      turnId: nextTurnId(),
+      model: entry.ref,
+    };
+    const capturedRequest = evidence
+      ? structuredClone(nativeRequest)
+      : undefined;
+    if (evidence) evidence.value = { kind: "score", request: capturedRequest };
+    const scored = await gateway.score(
+      nativeRequest,
+      signal ? { signal } : undefined,
+    );
     if (evidence)
       evidence.value = {
         kind: "score",
-        request: nativeRequest,
+        request: capturedRequest,
         result: scored,
       };
-    return scoresFromBatchResult(scored,request);
+    return scoresFromBatchResult(scored, request);
   };
   const captured = async <T>(
     kind: "generation" | "score",
@@ -144,21 +160,23 @@ export function gatewayDriver(options: {
     execute: (
       evidence?: { value?: unknown },
       capturing?: boolean,
-      requiredModel?: string
-    ) => Promise<T>
+      requiredModel?: string,
+    ) => Promise<T>,
   ): Promise<T> => {
     const capturing = options.captureModelTurns?.() === true;
     if (capturing && !options.prepareCapture)
       throw new Error("Captured inference requires its durable capture owner");
-    const session = capturing ? await options.prepareCapture!(request) : undefined;
+    const session = capturing
+      ? await options.prepareCapture!(request)
+      : undefined;
     const evidence = session ? ({} as { value?: unknown }) : undefined;
     try {
       return await captureExchange(
         kind,
         request,
         () => execute(evidence, capturing, session?.executorModel),
-        session?.record,
-        () => evidence?.value
+        session ? (exchange) => session.record(exchange) : undefined,
+        () => evidence?.value,
       );
     } finally {
       session?.finish();
@@ -167,14 +185,14 @@ export function gatewayDriver(options: {
   return Object.assign(
     (request: ModelTurnRequest, signal?: AbortSignal) =>
       captured("generation", request, (evidence, capturing, required) =>
-        turn(request, signal, evidence, capturing, required)
+        turn(request, signal, evidence, capturing, required),
       ),
     {
       decide: (request: DecisionRequest, signal?: AbortSignal) =>
         captured("score", request, (evidence, _capturing, required) =>
-          decide(request, signal, evidence, required)
+          decide(request, signal, evidence, required),
         ),
-    }
+    },
   );
 }
 
@@ -183,18 +201,28 @@ export function gatewayDriver(options: {
  * tool asks the gateway for `toolChoice: "required"`, which it maps to the
  * model's own API word (and refuses for an API that cannot force one).
  */
-function turnOptions(request: ModelTurnRequest, entry: ModelCatalogEntry): ModelGatewayTurnOptions {
+function turnOptions(
+  request: ModelTurnRequest,
+  entry: ModelCatalogEntry,
+): ModelGatewayTurnOptions {
   // Natlang's llama.cpp fork reads two more request fields natlang sets per turn: guided generation of tool calls
   // and the call's seed. The model's own serving settings (temperature, template arguments) come with the model.
   const forkFields = {
     ...(request.guidance ? { guidance: request.guidance } : {}),
-    ...(request.seed !== null && request.seed !== undefined ? { seed: request.seed } : {}),
+    ...(request.seed !== null && request.seed !== undefined
+      ? { seed: request.seed }
+      : {}),
   };
   return {
-    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+    ...(request.temperature !== undefined
+      ? { temperature: request.temperature }
+      : {}),
     ...(request.max_tokens ? { maxTokens: request.max_tokens } : {}),
-    ...(request.tool_choice === "required" ? { toolChoice: "required" as const } : {}),
-    ...(entry.provider === LOCAL_PROVIDER_ID && Object.keys(forkFields).length > 0
+    ...(request.tool_choice === "required"
+      ? { toolChoice: "required" as const }
+      : {}),
+    ...(entry.provider === LOCAL_PROVIDER_ID &&
+    Object.keys(forkFields).length > 0
       ? { samplingParams: forkFields }
       : {}),
   };
