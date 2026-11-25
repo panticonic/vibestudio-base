@@ -1,5 +1,5 @@
 import {expect,it} from "vitest";
-import {assessSemanticOutcome,extendSemanticOutcomeEffects} from "./semantic-outcome-contract.js";
+import {assessSemanticOutcome,extendSemanticOutcomeEffects,assessNativeQualification} from "./semantic-outcome-contract.js";
 function observed(){return assessSemanticOutcome({passed:false,checks:{native:true,optionalReturn:false,optionalWitness:false},marker:"actual-native-proof",incorrectReturnValues:[{definition:{name:"actualLeaf",source:"actualLeaf.nl"},value:{wrong:true},required:false}]},{effects:{checks:["native"],rationale:"Independent native state."},returnedValue:{checks:["optionalReturn"],required:false,rationale:"No requested root receipt."},incidentalValues:{checks:["optionalWitness"],rationale:"Incorrect optional witness remains masked."}});}
 it("extends role ownership and dimensions without reviving optional-return gates or losing actual proof",()=>{
  const before=observed(),after=extendSemanticOutcomeEffects(before,{rejectsAlias:true,rejectsBasis:true});
@@ -14,4 +14,14 @@ it("an actual failed qualification control fails the native dimension while reta
 });
 it("refuses duplicate, overwritten or non-boolean observations",()=>{
  for(const changed of [{native:true},{native:false},{extra:undefined}])expect(()=>extendSemanticOutcomeEffects(observed(),changed as never)).toThrow("new boolean observations");
+});
+
+it("recomputes stale published dimensions when a qualifier extends checks and contract around an assessed proof",()=>{
+ const before=observed();
+ const raw={...before,passed:true,checks:{...before.checks,actualNegativeControl:false},outcomeContract:{...before.outcomeContract,effects:{...before.outcomeContract.effects,checks:[...before.outcomeContract.effects.checks,"actualNegativeControl"]}},receipt:"actual-retained-receipt"};
+ expect(raw.outcomeDimensions.effects.passed).toBe(true);
+ const qualified=assessNativeQualification(raw);
+ expect(qualified.passed).toBe(false);expect(qualified.outcomeDimensions.effects.checks.actualNegativeControl).toBe(false);
+ expect(qualified.checks.optionalReturn).toBe(false);expect(qualified.outcomeContract.returnedValue.required).toBe(false);
+ expect(qualified.receipt).toBe(raw.receipt);expect(qualified.incorrectReturnValues).toEqual(before.incorrectReturnValues);
 });
