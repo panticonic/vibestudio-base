@@ -632,7 +632,7 @@
   "adventure-journey": {
     "program": "skills/open-adventure-journey/reviewAdventureJourney.nl",
     "callable": "reviewAdventureJourney",
-    "resultType": "JourneyOutcome",
+    "resultType": "JourneyFindings",
     "skill": "adventureJourney",
     "parameterNames": [
       "goal"
