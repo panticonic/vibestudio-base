@@ -250,9 +250,9 @@
     "additionalArguments": {}
   },
   "phoneFirstRun": {
-    "program": "skills/open-user-goal/planPhoneFirstRun.ts",
+    "program": "skills/open-user-goal/planPhoneFirstRun.nl",
     "callable": "planPhoneFirstRun",
-    "resultType": "PhoneFirstRunOutcome",
+    "resultType": "PhoneFirstRunFinding",
     "skill": "phoneFirstRun",
     "parameterNames": [
       "goal"

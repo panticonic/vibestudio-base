@@ -251,9 +251,9 @@ export default {
     "additionalArguments": {}
   },
   "phoneFirstRun": {
-    "program": "skills/open-user-goal/planPhoneFirstRun.ts",
+    "program": "skills/open-user-goal/planPhoneFirstRun.nl",
     "callable": "planPhoneFirstRun",
-    "resultType": "PhoneFirstRunOutcome",
+    "resultType": "PhoneFirstRunFinding",
     "skill": "phoneFirstRun",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"932803636001819f5a8b7a5e0cda758307f72fc5028ca5f8ae9fef4384985648"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"b4a5d9b84c14d29708dfec20da84d41d0771adc35f2e19894a3c8bf611643534"};

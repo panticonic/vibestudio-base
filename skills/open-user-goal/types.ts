@@ -336,13 +336,7 @@ export type PhoneFirstRunEvidence = {
   card: PhoneFirstRunCard; assignment: PhoneFirstRunAssignment;
   startup: PhonePhaseEvidence; build: PhoneProviderEvidence; resume: unknown;
 };
-export type PhoneFirstRunDecision = {
-  action: "record-ready-evidence" | "wait-workspace" | "review-startup-failure" |
-    "hold-owner" | "choose-desktop" | "review-release" | "review-source" |
-    "open-owned-desktop" | "continue-existing-install" | "inspect-native-evidence";
-  reason: string;
-};
-export type PhoneFirstRunOutcome = PhoneFirstRunDecision;
+export type PhoneFirstRunFinding = string;
 
 export type GrimoireDocket = { id: string; title: string; edition: "current" | "archive" };
 export type GrimoireSceneSource = {
