@@ -6,6 +6,7 @@ declare module "natlang:services" {
   };
   export const ownedTaskAttempts: {
     discover(): Promise<import("./types.js").OwnerLane[]>;
+    readArtifact(task: string, revision: number, room: string, basis: string): Promise<import("./types.js").TaskArtifact>;
     inspect(room: string, recipient: string | null): Promise<import("./types.js").LaneObservation>;
   };
   export const ownedTaskHandoff: {

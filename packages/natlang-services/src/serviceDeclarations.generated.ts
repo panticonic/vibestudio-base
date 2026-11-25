@@ -2962,28 +2962,37 @@ type MessageReceipt = {
   recipientRef: string; content: string; sequence: number; acknowledged: boolean;
 };
 
+type TaskArtifactRef = { digest: string; mediaType: string };
+
 type AttemptRecord = {
   taskId: string;
   task: string;
   owner: string;
   attempt: string;
   artifact: string;
+  artifactRef?: TaskArtifactRef;
   phase: "failed" | "cancelled" | "draft" | "ready" | "accepted";
 };
 
 type LaneObservation = {
   lane: OwnerLane;
   basis: string;
+  /** Resolved owner only when explicitly requested by the inspector; the receipt retains its actual recipient. */
   owner: string | null;
   receipt: MessageReceipt | null;
   record: AttemptRecord | null;
 };
 
+type TaskArtifact = { name: string; reference: TaskArtifactRef; content: string };
+
 /** Inspect actual owned local participant attempt receipts and recipient scope. */
 export function discover(): Promise<OwnerLane[]>;
 
 /** Inspect actual owned local participant attempt receipts and recipient scope. */
-export function inspect(room: string, recipient: string | null): Promise<LaneObservation>;`,
+export function inspect(room: string, recipient: string | null): Promise<LaneObservation>;
+
+/** Inspect actual owned local participant attempt receipts and recipient scope. */
+export function readArtifact(task: string, revision: number, room: string, basis: string): Promise<TaskArtifact>;`,
   ownedTaskHandoff: `/** Submit one exact-revision owned local handoff and read back its original attempt. */
 
 type HandoffAttempt = { attemptId: string; response: "submitted" | "interrupted" };

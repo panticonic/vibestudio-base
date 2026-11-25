@@ -15,12 +15,15 @@ type TaskView = {
   allowed: TaskStatus[];
   prerequisites: { title: string; status: TaskStatus; revision: number }[];
 };
+type TaskArtifactRef = { digest: string; mediaType: string };
+type TaskArtifact = { name: string; reference: TaskArtifactRef; content: string };
 type AttemptRecord = {
   taskId: string;
   task: string;
   owner: string;
   attempt: string;
   artifact: string;
+  artifactRef?: TaskArtifactRef;
   phase: "failed" | "cancelled" | "draft" | "ready" | "accepted";
 };
 type MessageReceipt = {
@@ -31,6 +34,7 @@ type OwnerLane = { id: string; title: string; maySend: boolean };
 type LaneObservation = {
   lane: OwnerLane;
   basis: string;
+  /** Resolved owner only when explicitly requested by the inspector; the receipt retains its actual recipient. */
   owner: string | null;
   receipt: MessageReceipt | null;
   record: AttemptRecord | null;
@@ -41,6 +45,8 @@ type TaskResolution = { status: TaskStatus | null; reason: string };
 type HandoffAttempt = { attemptId: string; response: "submitted" | "interrupted" };
 type OwnerDelivery = { attempt: HandoffAttempt; readback: MessageReceipt | null };
 type RecoveryReport = {
+  /** Actual retained output, when requested and available; never inferred from a filename. */
+  result?: TaskArtifact;
   task: string;
   revision: number;
   status: TaskStatus;
@@ -48,5 +54,5 @@ type RecoveryReport = {
   delivery: OwnerDelivery | null;
   reason: string;
 } | { task: null; reason: string };
-declare const fn: NatlangFunction<[goal: string], RecoveryReport> & { readonly advanceTask: NatlangFunction<[goal: string, task: TaskView, review: ReviewedAttempts], TaskResolution> & { readonly moveTask: NatlangFunction<[task: TaskView, status: TaskStatus], UpdateTaskResult> }; readonly deliverHandoff: NatlangFunction<[goal: string, task: TaskView, review: ReviewedAttempts], OwnerDelivery | null> & { readonly readNote: NatlangFunction<[attempt: HandoffAttempt], MessageReceipt | null>; readonly submitNote: NatlangFunction<[task: TaskView, lane: LaneObservation, body: string], HandoffAttempt> }; readonly findTask: NatlangFunction<[goal: string], TaskView | null> & { readonly listTasks: NatlangFunction<[], TaskOption[]>; readonly readTask: NatlangFunction<[id: string], TaskView> }; readonly reviewAttempts: NatlangFunction<[goal: string, current: TaskView], ReviewedAttempts> & { readonly listLanes: NatlangFunction<[], OwnerLane[]>; readonly matchCurrent: NatlangFunction<[current: TaskView, observed: LaneObservation[]], LaneObservation | null>; readonly readLane: NatlangFunction<[lane: string, recipient: string | null], LaneObservation> } };
+declare const fn: NatlangFunction<[goal: string], RecoveryReport> & { readonly advanceTask: NatlangFunction<[goal: string, task: TaskView, review: ReviewedAttempts], TaskResolution> & { readonly moveTask: ((task: TaskView, status: TaskStatus) => Promise<UpdateTaskResult>) & {  } }; readonly deliverHandoff: NatlangFunction<[goal: string, task: TaskView, review: ReviewedAttempts], OwnerDelivery | null> & { readonly readNote: ((attempt: HandoffAttempt) => Promise<MessageReceipt | null>) & {  }; readonly submitNote: ((task: TaskView, lane: LaneObservation, body: string) => Promise<HandoffAttempt>) & {  } }; readonly findTask: NatlangFunction<[goal: string], TaskView | null> & { readonly listTasks: (() => Promise<TaskOption[]>) & {  }; readonly readTask: ((id: string) => Promise<TaskView>) & {  } }; readonly readArtifact: ((current: TaskView, lane: LaneObservation) => Promise<TaskArtifact>) & {  }; readonly reviewAttempts: NatlangFunction<[goal: string, current: TaskView], ReviewedAttempts> & { readonly listLanes: (() => Promise<OwnerLane[]>) & {  }; readonly matchCurrent: NatlangFunction<[current: TaskView, observed: LaneObservation[]], LaneObservation | null>; readonly readLane: ((lane: string, recipient: string | null) => Promise<LaneObservation>) & {  } } };
 export default fn;

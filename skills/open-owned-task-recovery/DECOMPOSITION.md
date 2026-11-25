@@ -15,3 +15,12 @@ The user wants to decide what to do with durable task work when participant name
 - The installed local-messaging fixture supplies actual scoped DO senders, recipient participants, channel roster, joined durable PubSub replay, and independent delivery readback. Existing exact checks stay in the reused adapter. Task-recovery receipt content is decoded only after checking the replayed message and actual addressed participant.
 - Natlang composes typed recovery, transition, and handoff children. The crisp adapter scopes state, native CAS and original delivery-attempt handling. Native oracle verification independently rereads the task, every protected card and actual delivery lanes. The Host exporter binds outcomes to recorded scoped effects, and excludes unverified references.
 - Runnable fixtures and private outcome conditions live in System Testing. The Base workspace mounts the self-contained recovery skill. Personal supplies the owned mission task mechanism. Existing reconciliation, ordinary local delivery, native eval recovery and conversation cursor behavior retain their own entry points.
+
+An accepted receipt identifies its task, owner, attempt and named output; a
+filename alone is not the output contents. When the actual receipt includes an
+artifact reference, the readArtifact child can read its retained bytes through
+the current observed assignment and inspected lane. Use actual contents for
+requested values or calculations, and return their actual result reference and
+content when requested. Missing output must remain missing, rather than being
+inferred from acceptance or a plausible filename. This leaves composition to
+the model; it adds no requirement to read contents for identity-only questions.
