@@ -351,9 +351,9 @@ export default {
     "additionalArguments": {}
   },
   "assetIntegrity": {
-    "program": "skills/open-user-goal/reviewAssetIntegrity.ts",
+    "program": "skills/open-user-goal/reviewAssetIntegrity.nl",
     "callable": "reviewAssetIntegrity",
-    "resultType": "AssetIntegrityOutcome",
+    "resultType": "AssetIntegrityFinding",
     "skill": "assetIntegrity",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"d323d19eb2a3392e4c921ed4afe441720395208bf8b92bbd9781c622d48fa31d"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"e1a34a3ea09cc7a24a84dae585b970effbf40d352fda88200b7b9ed45de9b818"};

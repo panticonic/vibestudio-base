@@ -155,14 +155,7 @@ export type AssetRecoveryReceipt = { directory: string; manifestDigest: string; 
 export type AssetStageResult = { status: "staged"; receipt: AssetRecoveryReceipt }
   | { status: "changed"; working: string }
   | { status: "held"; reason: string };
-export type AssetIntegrityOutcome = {
-  status: "verified" | "staged" | "held";
-  approved: string;
-  working: string;
-  findings: AssetFinding[];
-  receipt: AssetRecoveryReceipt | null;
-  reason: string;
-};
+export type AssetIntegrityFinding = { finding: string | null; recovery: AssetRecoveryReceipt | null };
 export type AssetRecoveryPlan = { status: "copy"; selection: AssetSelection[] }
   | { status: "verified" | "held"; reason: string };
 
