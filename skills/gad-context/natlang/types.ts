@@ -148,6 +148,7 @@ export type DurableQuestionRoster = {
   members: DurableRosterMember[];
 };
 
+/** Message identifies the original question; later cancellation/settlement changes its status. */
 export type DurableQuestionJudgment = {
   status: "current" | "withdrawn" | "settled" | "no-question" | "history-incomplete";
   message: DurableQuestionMessage | null;
