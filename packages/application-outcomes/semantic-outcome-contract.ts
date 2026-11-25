@@ -107,6 +107,12 @@ export function assessSemanticOutcome<T extends Verification>(
   };
 }
 
+/** Publish every actual qualification observation with freshly assessed dimensions. */
+export function assessNativeQualification<T extends Verification>(verification: T) {
+  const assessed = assessSemanticOutcome(verification);
+  return { ...assessed, checks: assessed.observedChecks };
+}
+
 /** Extend an existing native assessment without replacing observations or losing role ownership. */
 export function extendSemanticOutcomeEffects<T extends Verification>(
   verification: T,
@@ -124,10 +130,9 @@ export function extendSemanticOutcomeEffects<T extends Verification>(
       checks: [...original.outcomeContract.effects.checks, ...Object.keys(additional)],
     },
   };
-  const assessed = assessSemanticOutcome({
+  return assessNativeQualification({
     ...verification,
     checks: { ...original.observedChecks, ...additional },
-  }, outcomeContract);
-  // Fixtures expose all observations for callers that add their own guards.
-  return { ...assessed, checks: assessed.observedChecks };
+    outcomeContract,
+  });
 }
