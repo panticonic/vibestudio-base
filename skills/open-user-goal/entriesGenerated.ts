@@ -1164,3 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"c26382beb64877bfae5f885b2d140237f21137901bc387c06ca8d74b780df963"};

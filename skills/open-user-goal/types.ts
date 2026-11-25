@@ -500,12 +500,12 @@ export type TerminalRepairArtifact = {
 };
 
 export type TerminalRepairPlan = {
-  status: "repair" | "existing" | "hold-edit" | "hold-test" | "blocked";
+  status: "repair" | "existing" | "diagnosed" | "hold-edit" | "hold-test" | "blocked";
   edits: TerminalRepairEdit[];
   reason: string;
 };
 
-export type TerminalRepairReport = { artifact: TerminalRepairArtifact | null; outcome: "verified" | "already-ready" | "hold-edit" | "hold-test" | "hold-moved" | "blocked"; explanation: string };
+export type TerminalRepairReport = { artifact: TerminalRepairArtifact | null; outcome: "verified" | "already-ready" | "diagnosed" | "hold-edit" | "hold-test" | "hold-moved" | "blocked"; explanation: string };
 
 export type { IntentReport } from "./discoverScopedIntent/types.js";
 export type { BoardMigrationOutcome } from "./reviewBoardMigration/types.js";
