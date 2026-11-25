@@ -7,13 +7,33 @@ description: Write, check, run and debug natlang programs in a Vibestudio worksp
 
 Natlang is TypeScript with natural-language functions. A `.nl` file is a function: its frontmatter declares a typed
 signature and its body is instructions a small model carries out (the `executor` model role: the local executor model
-when it is ready, otherwise a billed low-tier hosted model). The result is checked against the declared type. Because
-the model is small, you put the algorithm, the decomposition and the data contracts in the source, and the model only
-takes the next step.
+when it is ready, otherwise a billed low-tier hosted model). The result is checked against the declared type. Use types and hierarchical callable scopes to make domain operations and reusable semantic helpers available to
+the function responsible for a goal. That semantic function can choose and delegate subgoals, carry observations
+forward and reconsider its plan. TypeScript owns exact computation, native effects and application state boundaries.
 
 Everything here runs in an eval cell: `nl` and `natlang` are ambient there (no import). The eval reference is the
 natlang section of [EVAL.md](../sandbox/EVAL.md#natlang-nl-and-natlang), and `await help("natlang")` is the
 authoritative summary in a live cell. If this skill disagrees with them or with `natlang.describe`, trust those.
+
+## Semantic composition and pure decisions
+
+For an open-ended user goal, give a domain-specific semantic function responsibility for the result and a callable
+hierarchy broad enough to choose meaningful work. It decides which helpers to invoke, passes actual observations and
+uses their results to decide what remains. Keep deterministic algorithms, version checks and exact native mutations
+in TS helpers. A TS entry can bind application state and delegate the goal to that semantic owner; the filename is
+not the criterion. Pure decision leaves remain useful when their caller needs a classification or plan value and
+owns the corresponding effects. They complement goal-directed composition.
+
+The working [tutorial-revision program](../open-user-goal/reviseFromPublicResearch.nl) demonstrates this division.
+`reviseFromPublicResearch` owns the original request. Its children inspect the current documents and formulate the
+public question; explicit `uses` makes the research and document-revision hierarchies available. Those hierarchies
+own evidence gathering and reconciliation, while typed native operations enforce reads and versioned writes. An
+original recorded run shows the parent model choosing named child calls and further calls within those hierarchies.
+That observed run is an example, not a required route for other goals. Preserve actual observations, requested values
+and authored authority. Use callable-folder structure or explicit `uses` for access to required helpers.
+
+Check the actual trace for model-selected calls and subgoals. A large scope, a deep tree created by TS or an enum
+returned to a fixed coordinator alone does not demonstrate model-owned composition.
 
 ## The working loop
 
