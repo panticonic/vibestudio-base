@@ -227,9 +227,33 @@ export interface NeuralesePort {
     readonly dialect: string;
     /** The writer forces the supplied source text and does not sample completion tokens. */
     readonly forcedText?: true;
+    /**
+     * Write `text` as a state. `context` is the producing call it is written at the end of (its request, and its exact
+     * prompt and sampled reply ids when the server reported them); without one the writer uses its own producer call
+     * for a value with none (`serve/engine.py` `text_producer_messages`). A state is never written from the text alone.
+     */
     write(text: string, options?: {
         type?: string;
         producer?: Record<string, unknown>;
         truncated?: boolean;
+        context?: NativeWriteContext;
     }): Promise<NeuraleseBlockMeta>;
 }
+/**
+ * The producing call of a Neuralese text write (DECISIONS 2026-11-25): its messages and tools as sent and, when the
+ * server reported them, its exact prompt (`prompt`, or `promptSegments` with the states it imported) and sampled reply
+ * ids. The state is the span written after that reply; the consumer receives only the span's rows.
+ */
+export type NativeWriteContext = {
+    messages: unknown[];
+    tools: unknown[];
+    prompt?: number[];
+    promptSegments?: ({
+        kind: 'tokens';
+        token_ids: number[];
+    } | {
+        kind: 'native_state';
+        id: string;
+    })[];
+    reply?: number[];
+};

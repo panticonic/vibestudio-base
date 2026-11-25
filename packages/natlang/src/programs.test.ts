@@ -642,10 +642,10 @@ it("compiles the semantic function library with its installed research skill and
   expect(result.serviceScopes).toMatchObject({
     panelRecovery: ["visualRecovery/recoverPanelGoal.nl", "visualRecovery/recoverPanelGoal/recoverSurface.nl"],
     panelHealth: ["visualRecovery/reviewPanelHealth.nl", "visualRecovery/reviewPanelHealth/checkHealthChange.nl"],
-    goalBrowser: ["workInBrowser.nl"],
+    goalBrowser: ["workInBrowser.ts"],
     goalDiscovery: ["investigatePublicQuestion.nl"],
     goalWorkspace: ["reviseWorkspaceDocument.nl", "answerWorkspaceQuestion.nl"],
-    goalSuite: ["verifyWorkspaceSuite.nl"],
+    goalSuite: ["verifyWorkspaceSuite.ts"],
     recoverySessions: ["recovery/recoverSessionGoal.nl"],
     recoveryReplay: ["recovery/recoverSessionGoal/readRecoveryWindows.nl"],
     recoveryHandoff: ["recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],

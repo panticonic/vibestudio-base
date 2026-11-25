@@ -25,6 +25,7 @@ export function confinedRealm(newFunction: NewFunction): Realm {
   const compile = (argNames: string[], body: string) => newFunction(body, "natlang", ...argNames);
   const guestGlobal = (compile([], "return globalThis") as () => Record<string, unknown>)();
   return {
+    globalBindings: Object.getOwnPropertyNames(createPrivateGuestGlobal(guestGlobal)),
     call(body, parameters, args) {
       // `scope` claims every identifier, including names used by this wrapper;
       // the invocation values ride in the sloppy outer function's receiver, and

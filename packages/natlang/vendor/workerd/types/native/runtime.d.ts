@@ -23,7 +23,7 @@ export type NativeRuntimeHooks = {
     finiteAsync(source: unknown, label?: string): unknown;
     guard(id: string, fn: () => unknown, args?: readonly unknown[]): unknown;
     /** Type-checked analysis of `nl` in eval snippets. */
-    analyze(session: NativeSession, source: string): {
+    analyze(session: NativeSession, source: string, bindings?: readonly string[]): {
         plans: InlineLambdaPlan[];
         diagnostics: NatlangDiagnostic[];
         neuralese?: import('../compiler/neuralese.js').NeuraleseLiteral[];
@@ -31,7 +31,7 @@ export type NativeRuntimeHooks = {
         instantiations?: import('../compiler/neuralese.js').GenericInstantiation[];
     };
     /** Reads of fields a value's declared type does not have, checked in every eval. */
-    checkFields?(session: NativeSession, source: string): NatlangDiagnostic[];
+    checkFields?(session: NativeSession, source: string, bindings?: readonly string[]): NatlangDiagnostic[];
     /** The snippet with typed `refine<Is<T, "p">>(value)` / `assume<R>(value)` calls in their predicate form. */
     lowerRefinements?(session: NativeSession, source: string): string;
 };
@@ -59,6 +59,7 @@ export type NativeRuntimeOptions = {
     observeEffect?: (event: EffectEvent) => void;
     maxActions?: number;
     maxToolCalls?: number;
+    checkEvalBindings?: boolean;
     /**
      * The root call's ID: unique per run (it keys the call record, its children's parent link and the trace). Without one a
      * fresh `native-run:<uuid>` is used. `runLabel` is the logical name shared by runs of one kind (`curriculum-reference`),
@@ -176,6 +177,7 @@ export declare class NativeRuntime {
     readonly events: HostEvent[];
     readonly trace: NativeTraceRecorder;
     readonly options: {
+        checkEvalBindings?: boolean;
         maxActions?: number;
         maxToolCalls?: number;
         runId: string;
@@ -231,6 +233,8 @@ export declare class NativeRuntime {
         typeAliases?: Record<string, string>;
         resultPath?: (string | number)[];
         argumentName?: string;
+        /** The call whose latest turn produced the text (default: the current call; null: none, an outside input). */
+        producerCallId?: string | null;
     }): Promise<Value>;
     evaluate(node: LambdaNode, code: string, scope: Record<string, unknown>, live: Record<string, unknown>, timeoutMs?: number, signal?: AbortSignal): Promise<import("./evaluator.js").EvalResult>;
     private recordHostEvents;

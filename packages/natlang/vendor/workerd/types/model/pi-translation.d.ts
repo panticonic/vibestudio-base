@@ -12,6 +12,7 @@ export type PiTextBlock = {
 export type PiThinkingBlock = {
     type: 'thinking';
     thinking: string;
+    redacted?: boolean;
 };
 export type PiToolCallBlock = {
     type: 'toolCall';

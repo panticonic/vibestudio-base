@@ -231,7 +231,7 @@ function piDeltaTranslator() {
 function piAssistantContent(reply) {
   const calls = reply.content.filter((block) => block.type === "toolCall");
   const text = reply.content.filter((block) => block.type === "text").map((block) => block.text).join("");
-  const reasoning = reply.content.filter((block) => block.type === "thinking").map((block) => block.thinking).join("\n");
+  const reasoning = reply.content.filter((block) => block.type === "thinking" && !block.redacted).map((block) => block.thinking).join("\n");
   const rawCalls = calls.map((call) => ({
     id: call.id,
     type: "function",

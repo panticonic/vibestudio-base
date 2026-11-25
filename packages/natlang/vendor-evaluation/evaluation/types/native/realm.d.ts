@@ -10,6 +10,8 @@ import { type HeapProbe } from './eval-memory.js';
 export declare const UNAWAITED_DISPLAY = "[a Promise: not awaited yet; write await before the call to get its value]";
 /** Where compiled eval code runs: a JavaScript realm's global environment. */
 export interface Realm {
+    /** Additional globals supplied by this realm, for eval preflight. */
+    readonly globalBindings?: readonly string[];
     /**
      * Run `body` as the body of a strict-mode function whose parameters are `parameters`, called with `args`, with this
      * realm's global object as its global scope (the Function constructor's contract, strict), and return what it returns.
@@ -22,6 +24,8 @@ export interface Realm {
         timeoutMs?: number;
     }): unknown;
 }
+/** Global binding names without invoking any property's getter. */
+export declare function globalBindingNames(value: object): string[];
 /** A realm over a host-provided function constructor: `newFunction(body, name, ...parameterNames)`. */
 export declare function constructorRealm(newFunction: (body: string, name: string, ...parameters: string[]) => (...args: unknown[]) => unknown, name?: string): Realm;
 export declare function portable(value: unknown, seen?: Set<object>, path?: string, scope?: boolean): unknown;
@@ -30,6 +34,7 @@ export declare function snapshot(value: unknown): unknown;
 /** Static configuration of a `RealmEnvironment`; what depends on the instance is a protected method a subclass overrides. */
 export type RealmEnvironmentOptions = {
     authority: string;
+    globalBindings?: readonly string[];
     mode?: EnvironmentMode;
     /** The realm eval code runs in: asked for each evaluation in `fresh` mode, once in `retained` mode. */
     realm?: () => Realm;
@@ -80,6 +85,7 @@ export declare class RealmEnvironment implements EvalEnvironment {
     protected disposed: boolean;
     private retained?;
     constructor(options: RealmEnvironmentOptions);
+    get globalBindings(): readonly string[];
     /** The eval memory bound in MB, or undefined when evals are unbounded. */
     get memoryLimitMb(): number | undefined;
     /** The run-time bound of one synchronous stretch in seconds, or undefined when unbounded. */

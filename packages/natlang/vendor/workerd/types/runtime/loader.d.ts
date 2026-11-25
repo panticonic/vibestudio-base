@@ -110,12 +110,23 @@ export type NamespaceRecord = {
 };
 export type ItemRecord = NatlangRecord | ModuleRecord | NamespaceRecord;
 /** A source file that is not a valid natlang item: `reason` says why, at `line` (1-based) when it is known. */
+/** One positioned problem of a source file, kept with its own code (a refused loop is `forbidden-loop` at the loop). */
+export type SourceDiagnostic = {
+    line: number;
+    column: number;
+    code: string;
+    message: string;
+};
 export declare class NatlangSourceError extends Error {
     readonly path: string;
     readonly reason: string;
     readonly line?: number | undefined;
     readonly hint?: string | undefined;
-    constructor(path: string, reason: string, line?: number | undefined, hint?: string | undefined);
+    readonly diagnostics?: readonly SourceDiagnostic[] | undefined;
+    readonly code?: string | undefined;
+    constructor(path: string, reason: string, line?: number | undefined, hint?: string | undefined, diagnostics?: readonly SourceDiagnostic[] | undefined, code?: string | undefined);
+    /** A source error made of positioned diagnostics: the message lists each as `line:column message`. */
+    static of(path: string, items: readonly SourceDiagnostic[]): NatlangSourceError;
 }
 export declare function moduleResolvedImports(record: ModuleRecord): Record<string, ItemRecord> | undefined;
 /** Text of each package `.ts` file the module imports for types only, by its path from the package root. */

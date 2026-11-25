@@ -37,6 +37,8 @@ export declare class EvalFailure extends Error {
 }
 /** The deliberately small boundary between the interpreter and a TypeScript evaluator. */
 export interface EvalEnvironment {
+    /** Additional globals actually supplied by this evaluator; names confer no new runtime authority. */
+    readonly globalBindings?: readonly string[];
     readonly authority: string;
     readonly mode: EnvironmentMode;
     readonly scopeCapabilities?: {

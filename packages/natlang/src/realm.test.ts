@@ -18,6 +18,14 @@ describe("confinedRealm", () => {
     expect(seen).toEqual(["function", "undefined", "undefined", "undefined", "undefined"]);
   });
 
+  it("publishes only actual confined global names for natlang preflight", () => {
+    const confined = realm();
+    expect(confined.globalBindings).toContain("JSON");
+    expect(confined.globalBindings).not.toContain("fetch");
+    expect(confined.globalBindings).not.toContain("process");
+    expect(confined.call("return typeof JSON.parse;", [], [])).toBe("function");
+  });
+
   it("denies the constructor-chain route back to a compiler", () => {
     const attempts = realm().call(
       `const results = [];

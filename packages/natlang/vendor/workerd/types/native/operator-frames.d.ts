@@ -27,7 +27,23 @@ export type CapturedCall = {
     /** Capture the tokens of this text inside the reply (a `compact_history` note in its tool call) instead of the
      * reply's content. */
     select?: string;
+    /** Write this text as the span after the whole reply (a Neuralese text write in its producing call,
+     * `NeuralesePort.write`'s `context`), instead of capturing the reply's own tokens. */
+    write?: string;
 };
+/**
+ * The producing context of one model call (`NativeWriteContext`): the request's messages and tools and, when the
+ * server reported its RL capture, the exact prompt (token ids, or segments with the states it imported) and the
+ * sampled reply ids. Shared by the operator capture (agent.ts `capturedRef`) and Neuralese text writes.
+ */
+export declare function callContext(request: {
+    messages: unknown[];
+    tools?: unknown[];
+}, response: {
+    raw_response?: Record<string, unknown>;
+}): import('./neuralese-store.js').NativeWriteContext;
+export declare function noteProducingCall(callId: string, context: import('./neuralese-store.js').NativeWriteContext): void;
+export declare function producingCall(callId: string | null | undefined): import('./neuralese-store.js').NativeWriteContext | undefined;
 export type NativeCapture = (call: CapturedCall, options?: {
     type?: string;
 }) => Promise<import('./neuralese-store.js').NeuraleseBlockMeta>;
