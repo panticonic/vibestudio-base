@@ -13,9 +13,12 @@ export type PackageValue = {
 export type PackageObservation = {
   operationId: string; target: string; source: string; mainRevision: string; workingRevision: string;
   name: string; baselineName: string; workingDigest: string; baselineDigest: string;
+  /** Resolved worker declaration identity; name is not an npm package name. */
   receiver: { protocol: string; source: string; name: string; className: string | null; targetId: string | null } | null;
+  /** Build unit identity; name is the package name. */
   catalog: { source: string; name: string; kind: string } | null;
   baselineValue: PackageValue; workingValue: PackageValue;
+  /** Native join against the actual worker declaration, class, protocol and repository. */
   declaredReceiverMatches: boolean; scopeMatches: boolean; targetFieldMatches: boolean;
   suiteBlockedBy: string | null;
   suiteRequest: SuiteRequest | null;
