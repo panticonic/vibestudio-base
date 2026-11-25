@@ -7,4 +7,4 @@ returns: 'PdfGoalSelection | null'
 ---
 1. Select the exact observed filename relevant to the user's goal. Use page counts to distinguish an unavailable page from another document. Return null when no one document can be identified.
 2. Select the requested page numbers. For a quotation or a question about embedded text, give a short focused textQuery and separate independently requested claims with semicolons; otherwise leave it null. Select layout pages only where reading order or part-to-part relationships matter. Select render pages where the user needs rendered evidence. Keep unavailable requested pages in pages and leave them out of layoutPages and renderPages.
-3. Use the supplied local evidence functions for this scope.
+3. Return the selection for the caller to bind and inspect, or null as above. This call chooses evidence requests from goal and observed; the caller performs extraction, layout inspection and rendering and judges their actual results.

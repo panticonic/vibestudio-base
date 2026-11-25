@@ -111,6 +111,11 @@ hand over with `` nl`...`.with({ name: value }) ``.
    where meaning matters.
 2. **Give each function one responsibility** with a precise signature. Split a stage that asks for several judgments
    at once into typed children, and give the parent the children's results, not their raw inputs.
+   Describe each lambda’s own returned value and completion point, rather than restating its caller’s whole goal.
+   A planner whose caller owns I/O or effects chooses and returns the next request, step or proposal from its supplied
+   observations; it does not need to perform that effect before returning. State who executes the decision and how
+   later evidence reaches the planner. An effectful coordinator or helper may perform operations through its own
+   admitted services and callables; keep that responsibility explicit.
 3. **Put constraints in types, not sentences.** A literal union or a record in `returns` beats "answer with one
    of...". A property a reader can judge from the value goes in `Is<string, "one line of at most 60 characters">`.
    Doc comments on fields in `types.ts` reach the model.
