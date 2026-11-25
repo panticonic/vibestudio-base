@@ -461,7 +461,7 @@ export default {
     "additionalArguments": {}
   },
   "source-attribution": {
-    "program": "skills/open-user-goal/reviewSourceAttribution.ts",
+    "program": "skills/open-user-goal/reviewSourceAttribution.nl",
     "callable": "reviewSourceAttribution",
     "resultType": "SourceAttributionReport",
     "skill": "sourceAttribution",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"0a01e3c11895be16b8502a820b64a344ea0e3f90f1c15507c3de3df76437e8d0"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"932803636001819f5a8b7a5e0cda758307f72fc5028ca5f8ae9fef4384985648"};

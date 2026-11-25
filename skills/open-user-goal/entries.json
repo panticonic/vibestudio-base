@@ -460,7 +460,7 @@
     "additionalArguments": {}
   },
   "source-attribution": {
-    "program": "skills/open-user-goal/reviewSourceAttribution.ts",
+    "program": "skills/open-user-goal/reviewSourceAttribution.nl",
     "callable": "reviewSourceAttribution",
     "resultType": "SourceAttributionReport",
     "skill": "sourceAttribution",
