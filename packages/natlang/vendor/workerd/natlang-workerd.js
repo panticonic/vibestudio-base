@@ -225001,6 +225001,99 @@ var init_crisp_trace = __esm({
   }
 });
 
+// src/model/operational-error.ts
+function errorDataProperty(value, key) {
+  if (!value || typeof value !== "object" && typeof value !== "function") return void 0;
+  try {
+    let current = value;
+    for (let depth2 = 0; current && depth2 < 6; depth2++) {
+      const descriptor2 = Object.getOwnPropertyDescriptor(current, key);
+      if (descriptor2) return "value" in descriptor2 ? descriptor2.value : void 0;
+      current = Object.getPrototypeOf(current);
+    }
+  } catch {
+  }
+  return void 0;
+}
+function operationalErrorMetadata(error) {
+  const seen = /* @__PURE__ */ new Set();
+  let remaining = 8;
+  const identifier = (value) => typeof value === "string" && value.length <= 80 && /^[A-Za-z][A-Za-z0-9_]*$/u.test(value) ? value : void 0;
+  const visit = (value, depth2) => {
+    if (!value || typeof value !== "object") return {};
+    if (seen.has(value)) return { circular: true };
+    if (depth2 >= 4 || remaining-- <= 0) return { truncated: true };
+    seen.add(value);
+    const system = errorDataProperty(value, "systemError");
+    const systemField = (key) => system && typeof system === "object" ? errorDataProperty(system, key) : void 0;
+    const name = identifier(errorDataProperty(value, "name"));
+    const code = identifier(errorDataProperty(value, "code")) ?? identifier(systemField("code"));
+    const syscall = identifier(errorDataProperty(value, "syscall")) ?? identifier(systemField("syscall"));
+    const rawPhase = errorDataProperty(value, "phase");
+    const phase = typeof rawPhase === "string" && ["dns", "connect", "fetch-head", "response-body", "websocket-upgrade", "socket"].includes(
+      rawPhase
+    ) ? rawPhase : void 0;
+    const rawAddress = errorDataProperty(value, "address") ?? systemField("address");
+    const address = typeof rawAddress === "string" && (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(rawAddress) ? rawAddress.split(".").every((x) => Number(x) <= 255) : /^[A-Fa-f0-9:]{2,64}$/.test(rawAddress) && rawAddress.includes(":")) ? rawAddress : void 0;
+    const rawPort = errorDataProperty(value, "port") ?? systemField("port");
+    const port = typeof rawPort === "number" && Number.isInteger(rawPort) && rawPort >= 0 && rawPort <= 65535 ? rawPort : void 0;
+    const rawErrno = errorDataProperty(value, "errno") ?? systemField("errno");
+    const errno = typeof rawErrno === "number" && Number.isSafeInteger(rawErrno) ? rawErrno : void 0;
+    const cause = errorDataProperty(value, "cause") ?? errorDataProperty(value, "error");
+    const errors = errorDataProperty(value, "errors");
+    return {
+      ...name ? { name } : {},
+      ...code ? { code } : {},
+      ...syscall ? { syscall } : {},
+      ...phase ? { phase } : {},
+      ...address ? { address } : {},
+      ...port !== void 0 ? { port } : {},
+      ...errno !== void 0 ? { errno } : {},
+      ...cause && typeof cause === "object" ? { cause: visit(cause, depth2 + 1) } : {},
+      ...Array.isArray(errors) ? {
+        errors: errorArrayItems(errors, 3).map((item) => visit(item, depth2 + 1)),
+        ...errorDataProperty(errors, "length") > 3 ? { truncated: true } : {}
+      } : {}
+    };
+  };
+  try {
+    return visit(error, 0);
+  } catch {
+    return {};
+  }
+}
+function errorArrayItems(value, limit = Number.POSITIVE_INFINITY) {
+  if (!Array.isArray(value)) return [];
+  const length = errorDataProperty(value, "length");
+  if (typeof length !== "number" || !Number.isSafeInteger(length) || length < 0) return [];
+  const out = [];
+  for (let index = 0; index < Math.min(length, limit); index++) {
+    const item = Object.getOwnPropertyDescriptor(value, String(index));
+    if (item && "value" in item) out.push(item.value);
+  }
+  return out;
+}
+function providerFailureEvidence(error) {
+  const name = errorDataProperty(error, "name"), message2 = errorDataProperty(error, "message");
+  const diagnostics = operationalErrorMetadata(error);
+  const out = {
+    name: typeof name === "string" ? name : "Error",
+    message: typeof message2 === "string" ? message2 : typeof error === "string" ? error : "Provider request failed",
+    ...Object.keys(diagnostics).some((key) => key !== "name") ? { diagnostics } : {}
+  };
+  for (const [source2, target] of [["code", "code"], ["status", "status"], ["providerCode", "provider_code"], ["providerRetryable", "provider_retryable"], ["retry_after_ms", "retry_after_ms"]]) {
+    const value = errorDataProperty(error, source2);
+    if (typeof value === "string" || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value)) out[target] = value;
+  }
+  return out;
+}
+var init_operational_error = __esm({
+  "src/model/operational-error.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+  }
+});
+
 // src/native/native-protocol.ts
 function nativeProtocolFailure(response) {
   if (!record(response)) return void 0;
@@ -234629,6 +234722,7 @@ var init_agent = __esm({
   "src/native/agent.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    init_operational_error();
     init_native_protocol();
     init_type_aliases();
     init_tool_markup();
@@ -236362,6 +236456,7 @@ ${notes}` : opening;
             reservation?.finish(response.completion_tokens);
           } catch (error) {
             reservation?.finish();
+            const failureEvidence = providerFailureEvidence(error);
             session.runtime.trace.emit("model_request", {
               call_id: callId,
               phase: "error",
@@ -237011,13 +237106,15 @@ ${notes}` : opening;
               streamed = false;
               this.options.onDelta(turn, { type: "reset" });
             }
+            const failureEvidence = providerFailureEvidence(error);
             session.runtime.trace.emit("model_request", {
               call_id: callId,
               phase: "error",
               turn,
               actor: currentActor,
               duration_ms: Math.round(performance.now() - started),
-              error: `${error instanceof Error ? error.name : "Error"}: ${error instanceof Error ? error.message : String(error)}`
+              error: `${failureEvidence.name}: ${failureEvidence.message}`,
+              ...failureEvidence.diagnostics ? { error_metadata: failureEvidence.diagnostics } : {}
             });
             const measured = contextOverflow(error instanceof Error ? error.message : "");
             if (measured && overflowRetries < 2 && sentChars > 0) {

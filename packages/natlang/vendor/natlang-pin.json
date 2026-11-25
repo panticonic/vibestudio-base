@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "44fe89f6fc47893b18696d9e68a61853e73bce29",
+  "commit": "513f776de21e63923bc6f5d9fa2fb48c645ea83b",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "87142b659775c7d54f0893c3288c95af9ce2a3ec622a2b2ea53ca4afba52ca85",
+    "workerd/natlang-workerd.js": "dbfcbd6a7c0edc1bb28021ccfe518c821ebbcd1aaf52453136e594d93945e946",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "1f708462cef03c1416be1ea4fc4a4e805abfcaca062277fb84a20508b8ad30a7",
@@ -38,11 +38,12 @@
     "workerd/types/compiler/runtime-specifier.d.ts": "92dc2c4b29030b1c171b0f0772137398c1aa2b38e50c8e92f82df17d66c36677",
     "workerd/types/compiler/targets.d.ts": "52a2a9be358d072157016bda986a286910881c7cf0d76e3d18cb7af010ce6a23",
     "workerd/types/compiler/type-module-links.d.ts": "66d1be840f6ad695461f510ac4c4859bb8241760e46b7ea05c3b7292a4123284",
-    "workerd/types/contracts.d.ts": "bc6411e0d5fa6647b3d398626ab06eaa9003c15b9f8f9c1df5e628fc96962706",
+    "workerd/types/contracts.d.ts": "a3b10a23618b315a1e61957100a2296b6deb9baa70fb163a1c4595ca7c41665f",
     "workerd/types/core/index.d.ts": "8ff56eaf76aae2dbd5a754389427b947a7614e96cbdcbf0f674768d197ff22da",
     "workerd/types/core/workerd-bundle.d.ts": "4a40511caffe0ea52c76599f739f6eb52a8848aec79695aac0184450fb359275",
     "workerd/types/core/workerd.d.ts": "e2f6ed23cfa7e3843720b07d627571e656c727f5e950ef904ad39587c242c896",
     "workerd/types/guidance/program.d.ts": "aa74b06c4ea8f94a18915431e7f89c4570f65b00100269f1a591762af69d036a",
+    "workerd/types/model/operational-error.d.ts": "b5196582dba2a0985b3cfe02e12bad8bc84c86d1340668a07ee45795470b7a4e",
     "workerd/types/model/pi-translation.d.ts": "11f73954fcc0686b45bd3c894b1f3749622760ffe7d110cda7aa3c5f1d62f105",
     "workerd/types/native/agent.d.ts": "5dbe65e112113159d850ebb2d3dd19868d76dd5957b82c6cb41dea14420673f2",
     "workerd/types/native/data-layout.d.ts": "15e84a39a1957b702f6671ff0e9cbd189e48bd2d30267125d81d3a0619919dd6",

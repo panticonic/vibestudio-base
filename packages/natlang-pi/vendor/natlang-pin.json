@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "44fe89f6fc47893b18696d9e68a61853e73bce29",
+  "commit": "513f776de21e63923bc6f5d9fa2fb48c645ea83b",
   "dirty": false,
   "targets": [
     "pi"
@@ -13,10 +13,11 @@
   "files": {
     "pi/natlang-pi.d.ts": "59392afc1ccbd11483a9091a0b59ace6149df26eb707bd090a7205eb6fc569f9",
     "pi/natlang-pi.js": "244bef479d0449c16cbb993bd1b0f24be65234b1c210bbd3f7a41e164412deb6",
-    "pi/types/contracts.d.ts": "bc6411e0d5fa6647b3d398626ab06eaa9003c15b9f8f9c1df5e628fc96962706",
+    "pi/types/contracts.d.ts": "a3b10a23618b315a1e61957100a2296b6deb9baa70fb163a1c4595ca7c41665f",
     "pi/types/decision-frame.d.ts": "f59d3a406a2884920dffd8ecf7e34cf975072b7fad9cdfdef0b0e189567c92b8",
     "pi/types/entry/pi.d.ts": "85a98a1a3cd349d4ded16e24967e16e4cc45e45b3375d4eceaf602f460964119",
     "pi/types/model/decision-scoring.d.ts": "271886a5b3cb5eac6855a4349061648e8f89c643829f5f99a2114c8956878cf9",
+    "pi/types/model/operational-error.d.ts": "b5196582dba2a0985b3cfe02e12bad8bc84c86d1340668a07ee45795470b7a4e",
     "pi/types/model/pi-translation.d.ts": "11f73954fcc0686b45bd3c894b1f3749622760ffe7d110cda7aa3c5f1d62f105"
   }
 }

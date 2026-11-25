@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "44fe89f6fc47893b18696d9e68a61853e73bce29",
+  "commit": "513f776de21e63923bc6f5d9fa2fb48c645ea83b",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -54,7 +54,7 @@
     "evaluation/types/compiler/rewrites.d.ts": "4d8f1a091d11e89583cbff7770f9012a477874cfd26761e49493401defcdc50f",
     "evaluation/types/compiler/runtime-specifier.d.ts": "92dc2c4b29030b1c171b0f0772137398c1aa2b38e50c8e92f82df17d66c36677",
     "evaluation/types/compiler/targets.d.ts": "52a2a9be358d072157016bda986a286910881c7cf0d76e3d18cb7af010ce6a23",
-    "evaluation/types/contracts.d.ts": "bc6411e0d5fa6647b3d398626ab06eaa9003c15b9f8f9c1df5e628fc96962706",
+    "evaluation/types/contracts.d.ts": "a3b10a23618b315a1e61957100a2296b6deb9baa70fb163a1c4595ca7c41665f",
     "evaluation/types/decision-frame.d.ts": "f59d3a406a2884920dffd8ecf7e34cf975072b7fad9cdfdef0b0e189567c92b8",
     "evaluation/types/entry/evaluation.d.ts": "4a6a8c7cab18402730f34ba02ce374a3bb4d660605baa886a43f03cfeb69f151",
     "evaluation/types/evaluation/fixtures.d.ts": "dd736199cf6b2045566c7e26562f43fc8974061c5d019d5d435b2558b115d504",
@@ -88,6 +88,7 @@
     "evaluation/types/model/neuralese-info.d.ts": "0deebeaed126bacf11c8e9c2624a9c6732de6789a8191af806fa3483a88c9b18",
     "evaluation/types/model/neuralese-server.d.ts": "5688fbdf8a32d2282baaaed389c62e8f1235416212947ca8c9ed84fe87ff2f19",
     "evaluation/types/model/openai-compatible.d.ts": "c3680bf8769cb74e2dfe2421fdadadada128f88eace733b55825d051255615f4",
+    "evaluation/types/model/operational-error.d.ts": "b5196582dba2a0985b3cfe02e12bad8bc84c86d1340668a07ee45795470b7a4e",
     "evaluation/types/model/pi-translation.d.ts": "11f73954fcc0686b45bd3c894b1f3749622760ffe7d110cda7aa3c5f1d62f105",
     "evaluation/types/model/scheduler.d.ts": "ed4a4275aedf0e2b8803569f3f3c03e530288956d0d34ceb9c67cb1ca5ecb2f0",
     "evaluation/types/model/scoring.d.ts": "60cb65ec6d60d0446fa976d26e08105084e7b3500932abd9cf0afc5752f42ea9",

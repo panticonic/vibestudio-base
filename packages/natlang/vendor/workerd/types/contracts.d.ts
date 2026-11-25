@@ -304,6 +304,8 @@ export type DecisionScorer = ((request: DecisionRequest, signal?: AbortSignal) =
 /** Aggregate-only progress from a streaming provider turn. Contains no generated content. */
 export type ModelStreamProgress = {
     status: 'progress' | 'completed' | 'failed';
+    /** Content-free actual failure identifiers; never provider payloads or credential data. */
+    error?: import('./model/operational-error.js').OperationalErrorMetadata;
     deltaEvents: number;
     deltaBytes: number;
     textDeltaEvents: number;
