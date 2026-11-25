@@ -28,6 +28,73 @@ interface WorkerModelSocket extends ProviderWebSocket {
   binaryType: "blob" | "arraybuffer";
 }
 
+export type NativeTransportErrorMetadata = {
+  readonly name?: string;
+  readonly code?: string;
+  readonly syscall?: string;
+  readonly cause?: NativeTransportErrorMetadata;
+  readonly errors?: readonly NativeTransportErrorMetadata[];
+  readonly circular?: true;
+  readonly truncated?: true;
+};
+
+/** Only protocol error identifiers; error messages/stacks may contain request data. */
+function transportErrorMetadata(error: unknown): NativeTransportErrorMetadata {
+  const seen = new Set<object>();
+  let remaining = 8;
+  const field = (value: object, key: string): unknown => {
+    try {
+      return Reflect.get(value, key);
+    } catch {
+      return undefined;
+    }
+  };
+  const identifier = (value: unknown): string | undefined =>
+    typeof value === "string" &&
+    value.length <= 80 &&
+    /^[A-Za-z][A-Za-z0-9_]*$/u.test(value)
+      ? value
+      : undefined;
+  const visit = (
+    value: unknown,
+    depth: number,
+  ): NativeTransportErrorMetadata => {
+    if (!value || typeof value !== "object") return {};
+    if (seen.has(value)) return { circular: true };
+    if (depth >= 4 || remaining-- <= 0) return { truncated: true };
+    seen.add(value);
+    const system = field(value, "systemError");
+    const systemField = (key: string) =>
+      system && typeof system === "object" ? field(system, key) : undefined;
+    const name = identifier(field(value, "name"));
+    const code =
+      identifier(field(value, "code")) ?? identifier(systemField("code"));
+    const syscall =
+      identifier(field(value, "syscall")) ?? identifier(systemField("syscall"));
+    const cause = field(value, "cause") ?? field(value, "error");
+    const errors = field(value, "errors");
+    return {
+      ...(name ? { name } : {}),
+      ...(code ? { code } : {}),
+      ...(syscall ? { syscall } : {}),
+      ...(cause && typeof cause === "object"
+        ? { cause: visit(cause, depth + 1) }
+        : {}),
+      ...(Array.isArray(errors)
+        ? {
+            errors: errors.slice(0, 3).map((item) => visit(item, depth + 1)),
+            ...(errors.length > 3 ? { truncated: true as const } : {}),
+          }
+        : {}),
+    };
+  };
+  try {
+    return visit(error, 0);
+  } catch {
+    return {};
+  }
+}
+
 /** Content-free milestones from the existing owned transport, never frame/credential data. */
 export type NativeModelTransportDiagnostic = {
   readonly milestone:
@@ -42,8 +109,24 @@ export type NativeModelTransportDiagnostic = {
     | "close_observed"
     | "cancelled"
     | "operation_error"
+    | "response_head"
     | "provider_event"
     | "provider_terminal";
+  readonly observedAt?: number;
+  readonly requestId?: number;
+  readonly phase?:
+    | "fetch-head"
+    | "request-body"
+    | "response-body"
+    | "websocket-upgrade"
+    | "websocket-send"
+    | "websocket-close"
+    | "websocket-receive";
+  readonly status?: number;
+  readonly bytes?: number;
+  readonly chunks?: number;
+  readonly aborted?: boolean;
+  readonly error?: NativeTransportErrorMetadata;
   readonly socketId?: number;
   readonly sends?: number;
   readonly messages?: number;
@@ -203,9 +286,7 @@ function createModelConnection(
       base.protocol !== "http:" ||
       !["127.0.0.1", "[::1]", "localhost"].includes(base.hostname)
     )
-      throw new Error(
-        "Local model transport requires a loopback endpoint",
-      );
+      throw new Error("Local model transport requires a loopback endpoint");
   }
   const transport =
     input.kind === "credential"
@@ -242,9 +323,14 @@ function createModelConnection(
     try {
       input.onDiagnostic?.(event);
     } catch {
-      console.warn("Native model transport diagnostic observer failed");
+      try {
+        console.warn("Native model transport diagnostic observer failed");
+      } catch {
+        /* Observation cannot replace transport results. */
+      }
     }
   };
+  let nextRequestId = 0;
   let nextSocketId = 0;
   let providerEvents = 0;
   const providerText = {
@@ -349,8 +435,15 @@ function createModelConnection(
   function ownStream(
     source: ReadableStream<Uint8Array>,
     signal: AbortSignal,
+    observation?: {
+      requestId: number;
+      phase: "request-body" | "response-body";
+      status?: number;
+    },
   ): ReadableStream<Uint8Array> {
     const reader = source.getReader();
+    let bytes = 0,
+      chunks = 0;
     let stopping: Promise<void> | undefined;
     let finished = false;
     let ended = false;
@@ -376,6 +469,15 @@ function createModelConnection(
       },
     };
     const onAbort = () => {
+      if (observation)
+        report({
+          milestone: "cancelled",
+          observedAt: Date.now(),
+          ...observation,
+          bytes,
+          chunks,
+          aborted: true,
+        });
       void stop(resource, signal.reason).catch(() => {});
     };
     const stream = new ReadableStream<Uint8Array>({
@@ -390,10 +492,24 @@ function createModelConnection(
             ended = true;
             finish();
             value.close();
-          } else value.enqueue(next.value);
+          } else {
+            bytes += next.value.byteLength;
+            chunks += 1;
+            value.enqueue(next.value);
+          }
         } catch (error) {
           if (ended) return;
           ended = true;
+          if (observation)
+            report({
+              milestone: "operation_error",
+              observedAt: Date.now(),
+              ...observation,
+              bytes,
+              chunks,
+              aborted: signal.aborted,
+              error: transportErrorMetadata(error),
+            });
           finish();
           value.error(error);
         }
@@ -409,13 +525,24 @@ function createModelConnection(
     return stream;
   }
 
-  function ownResponse(response: Response, signal: AbortSignal): Response {
+  function ownResponse(
+    response: Response,
+    signal: AbortSignal,
+    requestId: number,
+  ): Response {
     if (!response.body) return response;
-    const result = new Response(ownStream(response.body, signal), {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
+    const result = new Response(
+      ownStream(response.body, signal, {
+        requestId,
+        phase: "response-body",
+        status: response.status,
+      }),
+      {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      },
+    );
     Object.defineProperty(result, "url", { value: response.url });
     return result;
   }
@@ -434,9 +561,17 @@ function createModelConnection(
       if (messages === 1)
         report({ milestone: "message_observed", ...metadata() });
     };
-    const onError = () => {
+    const onError = (event: unknown) => {
       errors += 1;
-      if (errors === 1) report({ milestone: "socket_error", ...metadata() });
+      if (errors === 1)
+        report({
+          milestone: "socket_error",
+          ...metadata(),
+          observedAt: Date.now(),
+          phase: "websocket-receive",
+          aborted: signal.aborted,
+          error: transportErrorMetadata(event),
+        });
       // Workers reports a terminal network failure with ErrorEvent and CLOSED,
       // without a subsequent CloseEvent. A nonterminal error retains ownership.
       if (socket.readyState === 3) finish();
@@ -485,7 +620,14 @@ function createModelConnection(
         if (socket.readyState === 3) finish();
       } catch (error) {
         cleanupFailures.add(error);
-        report({ milestone: "operation_error", ...metadata() });
+        report({
+          milestone: "operation_error",
+          ...metadata(),
+          observedAt: Date.now(),
+          phase: "websocket-close",
+          aborted: signal.aborted,
+          error: transportErrorMetadata(error),
+        });
         closedReject(error);
         throw error;
       }
@@ -539,7 +681,14 @@ function createModelConnection(
           try {
             socket.send(data);
           } catch (error) {
-            report({ milestone: "operation_error", ...metadata() });
+            report({
+              milestone: "operation_error",
+              ...metadata(),
+              observedAt: Date.now(),
+              phase: "websocket-send",
+              aborted: signal.aborted,
+              error: transportErrorMetadata(error),
+            });
             throw error;
           }
           report({ milestone: "send_completed", ...metadata() });
@@ -571,6 +720,7 @@ function createModelConnection(
       authType,
       fetch: (requestInput, init) =>
         invoke(async () => {
+          const requestId = ++nextRequestId;
           const { request, body: requestBody } = modelRequest(
             requestInput,
             init,
@@ -587,25 +737,47 @@ function createModelConnection(
           const body = requestBody
             ? new Uint8Array(
                 await new Response(
-                  ownStream(requestBody, signal),
+                  ownStream(requestBody, signal, {
+                    requestId,
+                    phase: "request-body",
+                  }),
                 ).arrayBuffer(),
               )
             : undefined;
           signal.throwIfAborted();
           const audiences = [{ url: base.href, match: "path-prefix" as const }];
-          const response =
-            transport.kind === "credential"
-              ? await transport.client.fetch(
-                  url,
-                  { method: request.method, headers, body, signal },
-                  { credentialId: transport.credentialId, audiences },
-                )
-              : await transport.client.fetch(
-                  url,
-                  { method: request.method, headers, body, signal },
-                  { audiences },
-                );
-          const owned = ownResponse(response, signal);
+          let response: Response;
+          try {
+            response =
+              transport.kind === "credential"
+                ? await transport.client.fetch(
+                    url,
+                    { method: request.method, headers, body, signal },
+                    { credentialId: transport.credentialId, audiences },
+                  )
+                : await transport.client.fetch(
+                    url,
+                    { method: request.method, headers, body, signal },
+                    { audiences },
+                  );
+          } catch (error) {
+            report({
+              milestone: "operation_error",
+              observedAt: Date.now(),
+              requestId,
+              phase: "fetch-head",
+              aborted: signal.aborted,
+              error: transportErrorMetadata(error),
+            });
+            throw error;
+          }
+          report({
+            milestone: "response_head",
+            observedAt: Date.now(),
+            requestId,
+            status: response.status,
+          });
+          const owned = ownResponse(response, signal, requestId);
           signal.throwIfAborted();
           return owned;
         }),
@@ -705,12 +877,12 @@ function createModelConnection(
       },
       connectWebSocket: (rawUrl, options) =>
         invoke(async () => {
+          const signal = AbortSignal.any([
+            controller.signal,
+            ...(options.signal ? [options.signal] : []),
+          ]);
           let webSocketScopeId: string | undefined;
           try {
-            const signal = AbortSignal.any([
-              controller.signal,
-              ...(options.signal ? [options.signal] : []),
-            ]);
             signal.throwIfAborted();
             const url = boundRequestUrl(rawUrl, base);
             const headers = credentialHeaders(options.headers);
@@ -790,7 +962,13 @@ function createModelConnection(
             if (webSocketScopeId) acceptedWebSocketScopes.add(webSocketScopeId);
             return socket;
           } catch (error) {
-            report({ milestone: "operation_error" });
+            report({
+              milestone: "operation_error",
+              observedAt: Date.now(),
+              phase: "websocket-upgrade",
+              aborted: signal.aborted,
+              error: transportErrorMetadata(error),
+            });
             if (webSocketScopeId) {
               try {
                 await closeWebSocketScope(webSocketScopeId);

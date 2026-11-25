@@ -1,5 +1,9 @@
 import { mainRpcMethod } from "@vibestudio/service-schemas/mainRpc";
-import { createProvider, type ApiKeyAuth, type Provider } from "@panticonic/pi-ai";
+import {
+  createProvider,
+  type ApiKeyAuth,
+  type Provider,
+} from "@panticonic/pi-ai";
 import { openAICompletionsApi } from "@panticonic/pi-ai/api/openai-completions.lazy";
 import type { PiModelSpec } from "@workspace/model-catalog/catalog";
 import { builtinModels } from "@panticonic/pi-ai/providers/all";
@@ -100,7 +104,10 @@ const LOCAL_PROVIDER = "local";
 /** The `local` Pi provider over the local-models extension's descriptors. Endpoint
  * authentication is attested by host egress; the provider carries only the protected sentinel. */
 export function createLocalNativeModelProvider(
-  models: readonly { readonly spec: PiModelSpec; readonly toolsCapable: boolean }[],
+  models: readonly {
+    readonly spec: PiModelSpec;
+    readonly toolsCapable: boolean;
+  }[],
 ): Provider {
   return createProvider({
     id: LOCAL_PROVIDER,
@@ -154,18 +161,35 @@ export function createProtectedModelProvider(
     context.abortSignal?.throwIfAborted();
     const onDiagnostic = (
       event: import("./native-model-transport.js").NativeModelTransportDiagnostic,
-    ) =>
-      console.info("[NativeModelTransport]", {
+    ) => {
+      const diagnostic = {
         taskId: request.taskId,
         conversationId: request.conversationId,
         attempt: request.attempt,
+        provider: request.model.provider,
+        model: request.model.id,
+        ...(typeof request.options.sessionId === "string" &&
+        request.options.sessionId.length > 0
+          ? { providerSessionId: request.options.sessionId }
+          : {}),
         purpose:
           request.purpose === "generation" || request.purpose === "compaction"
             ? request.purpose
             : "other",
         operation: request.operation,
         ...event,
-      });
+      };
+      // Workerd stdout is verbose-only; keep request-bound failures as one
+      // content-free warning line before an SDK can flatten Error.cause.
+      if (
+        ((event.milestone === "operation_error" ||
+          event.milestone === "socket_error") &&
+          event.error) ||
+        (event.milestone === "cancelled" && event.requestId !== undefined)
+      )
+        console.warn("[NativeModelTransport] " + JSON.stringify(diagnostic));
+      else console.info("[NativeModelTransport]", diagnostic);
+    };
     const { rpc, cleanupRpc } = await host.rpcForRequest(request, api, context);
     context.abortSignal?.throwIfAborted();
     if (
@@ -181,7 +205,10 @@ export function createProtectedModelProvider(
         // conversation is the stable Pi provider session across those tasks;
         // taskId changes after a tool result and would reset deterministic
         // test-model turn state on each generation.
-        options: { sessionId: request.options.sessionId || String(request.conversationId) },
+        options: {
+          sessionId:
+            request.options.sessionId || String(request.conversationId),
+        },
         close: async () => {},
       };
     }
