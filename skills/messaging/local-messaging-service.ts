@@ -1,4 +1,4 @@
-import { resolveAddressee } from "./resolve-addressee.js";
+import { resolveRecipientPhrase } from "./resolve-addressee.js";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import type { Addressee, Snapshot, Receipt, DeliveryEvidence } from "../vibestudio-workflows/runWorkflow/routeMessage/types.js";
 
@@ -33,7 +33,7 @@ export function createLocalMessaging(options:{
     await live();
     const revision=sha256Hex(new TextEncoder().encode(JSON.stringify([...rows].sort((a,b)=>a.ref.localeCompare(b.ref)))));
     // The original exact resolver is authoritative; no model choice replaces it.
-    const resolution=resolveAddressee(recipientPhrase,rows);
+    const resolution=resolveRecipientPhrase(recipientPhrase,rows);
     return {fixtureId:lease.fixtureId,channelId:lease.channelId,revision,rows,resolution};
   };
   let sentArgs:string|undefined;

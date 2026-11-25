@@ -1,6 +1,6 @@
 import type { AddresseeRow } from "@workspace/agentic-protocol";
 import { describe, expect, it } from "vitest";
-import { resolveAddressee } from "./resolve-addressee.js";
+import { resolveAddressee, resolveRecipientPhrase } from "./resolve-addressee.js";
 
 const channel: AddresseeRow = {
   ref: "(omit `to`)",
@@ -110,4 +110,17 @@ describe("resolveAddressee", () => {
       reason: "none",
     });
   });
+});
+
+it("resolves supplied recipient phrases without requiring an invented addressing verb",()=>{
+ const sam={ref:"@sam-intake",kind:"agent",note:"Sam intake controller"};
+ const audit={ref:"@sam-audit",kind:"agent",note:"Sam audit observer"};
+ const lena={ref:"@lena-ops",kind:"agent",note:"Lena operations"};
+ const roster=[sam,audit,lena];
+ expect(resolveRecipientPhrase("@sam-intake",roster)).toEqual(ref(sam));
+ expect(resolveRecipientPhrase("Sam intake controller",roster)).toEqual(ref(sam));
+ expect(resolveRecipientPhrase("Sam",roster)).toMatchObject({kind:"ambiguous",reason:"several",candidates:[sam,audit]});
+ expect(resolveRecipientPhrase("@sam-absent",roster)).toMatchObject({kind:"ambiguous",reason:"none"});
+ expect(resolveRecipientPhrase("Tell @sam-intake that Lena approved the roster",roster)).toEqual(ref(sam));
+ expect(resolveAddressee("Maria should hear that the build passed",rows)).toMatchObject({kind:"ambiguous",reason:"none"});
 });

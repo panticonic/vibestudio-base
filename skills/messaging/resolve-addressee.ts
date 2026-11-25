@@ -157,8 +157,19 @@ export function resolveAddressee(
   utterance: string,
   rows: readonly AddresseeRow[],
 ): AddresseeResolution {
-  const phrase = addresseePhrase(utterance);
-  const named = phrase === null ? [] : namedRows(phrase, rows);
+  return resolvePhrase(addresseePhrase(utterance), rows);
+}
+
+/** Resolve an explicit recipient phrase, or the addressee of an addressed request.
+ * The message body of an addressed request never participates in attribution. */
+export function resolveRecipientPhrase(phrase: string, rows: readonly AddresseeRow[]): AddresseeResolution {
+  return resolvePhrase(addresseePhrase(phrase) ?? phrase, rows);
+}
+
+function resolvePhrase(phrase: string | null, rows: readonly AddresseeRow[]): AddresseeResolution {
+  const exactHandle = phrase !== null && /^@[\p{L}\p{N}_-]+$/u.test(phrase.trim());
+  const named = phrase === null ? [] : exactHandle
+    ? rows.filter(row => row.ref === phrase.trim()) : namedRows(phrase, rows);
   if (named.length === 1) return { kind: "ref", ref: named[0]!.ref, note: named[0]!.note };
   if (named.length > 1) return { kind: "ambiguous", reason: "several", candidates: named };
   return { kind: "ambiguous", reason: "none", candidates: [...rows] };
