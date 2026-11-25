@@ -76,8 +76,6 @@ export function bindExtensionRelease(input: {
   const { contextId, name, source, method, goal } = input;
   const operationId = crypto.randomUUID();
   const request: ExtensionReleaseRequest = { goal, operationId, method };
-  let sourceObserved = false;
-  let runtimeRead = false;
   return {
     request,
     services: {
@@ -97,7 +95,6 @@ export function bindExtensionRelease(input: {
               : observeRevision(workingHead, source, name),
             publishedRead,
           ]);
-          sourceObserved = true;
           return {
             operationId,
             contextId,
@@ -115,11 +112,8 @@ export function bindExtensionRelease(input: {
           };
         },
         async runtime(id: string): Promise<ExtensionRuntime> {
-          if (id !== operationId || !sourceObserved || runtimeRead)
-            throw new Error(
-              "Inspect only the assigned extension after observing its source",
-            );
-          runtimeRead = true;
+          if (id !== operationId)
+            throw new Error("Inspect only the assigned extension runtime");
           const status = await extensions.status(name);
           if (status.name !== name || status.source !== source)
             throw new Error("The runtime returned a different extension");
