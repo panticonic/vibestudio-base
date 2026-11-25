@@ -106,3 +106,28 @@ export function assessSemanticOutcome<T extends Verification>(
     },
   };
 }
+
+/** Extend an existing native assessment without replacing observations or losing role ownership. */
+export function extendSemanticOutcomeEffects<T extends Verification>(
+  verification: T,
+  additional: Record<string, boolean>,
+) {
+  const original = assessSemanticOutcome(verification);
+  for (const [name, value] of Object.entries(additional)) {
+    if (typeof value !== "boolean" || Object.hasOwn(original.observedChecks, name))
+      throw new Error("Additional native checks must be new boolean observations");
+  }
+  const outcomeContract = {
+    ...original.outcomeContract,
+    effects: {
+      ...original.outcomeContract.effects,
+      checks: [...original.outcomeContract.effects.checks, ...Object.keys(additional)],
+    },
+  };
+  const assessed = assessSemanticOutcome({
+    ...verification,
+    checks: { ...original.observedChecks, ...additional },
+  }, outcomeContract);
+  // Fixtures expose all observations for callers that add their own guards.
+  return { ...assessed, checks: assessed.observedChecks };
+}
