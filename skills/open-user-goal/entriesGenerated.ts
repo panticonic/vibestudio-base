@@ -771,7 +771,7 @@ export default {
     "additionalArguments": {}
   },
   "capability-plan": {
-    "program": "skills/open-user-goal/workOnCapabilityGoal.ts",
+    "program": "skills/open-user-goal/workOnCapabilityGoal.nl",
     "callable": "workOnCapabilityGoal",
     "resultType": "CapabilityGoalReport",
     "skill": "capabilityPlan",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"b955ef519f2ba8bffcaddeac157013f20eda4badb54ffb7960703029e3e178e8"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"4bc1e7548c7e95486bd4f0fd907d5dd9e6c36189378c9ec28547a61187e5dda7"};

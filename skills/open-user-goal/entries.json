@@ -770,7 +770,7 @@
     "additionalArguments": {}
   },
   "capability-plan": {
-    "program": "skills/open-user-goal/workOnCapabilityGoal.ts",
+    "program": "skills/open-user-goal/workOnCapabilityGoal.nl",
     "callable": "workOnCapabilityGoal",
     "resultType": "CapabilityGoalReport",
     "skill": "capabilityPlan",

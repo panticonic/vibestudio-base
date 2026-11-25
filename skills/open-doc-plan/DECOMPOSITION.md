@@ -18,12 +18,11 @@ suggested service methods.
 | Approved handoff | Base `scratch-handoff-bindings`; System Testing `scratch-handoff-managed.ts` readWorkspaceBytes | Reuse its atomic writer and independent bounded byte read. Stage only a checked plan when the user requested one and the caller grant allows it. |
 | Reference verification and capture | System Testing new owned context adapter, Host exact effect evidence, Natlang crosswalk | Confirm the live identity, method schema/argument names, exact installed skill receipt and exact quoted excerpt, retention of scratch output, and negative scope. Raw expected steps and reference fixture requests stay outside the model. |
 
-`workOnCapabilityGoal` separates goal-specific catalog search, exact evidence
-acquisition, plan synthesis, and optional handoff. `chooseDocRequests`
+`workOnCapabilityGoal` is a model-owned domain root selecting goal-specific catalog search, exact evidence
+acquisition, synthesis and optional handoff branches from actual observations. `chooseDocRequests`
 selects bounded topics and deciding descriptions from installed evidence.
-`synthesizeCapabilityPlan` retains live interfaces and one or two exact skill
-excerpts, reconciles a stale memo, and identifies genuinely unavailable
-dependencies with role-limited evidence. TypeScript bounds retrieval and
+`synthesizeCapabilityPlan` applies live interfaces and relevant installed knowledge, reconciles a stale memo, and identifies genuinely unavailable
+dependencies with role-limited evidence. The pure `bindCapabilityPlan` joins semantic choices to the actual supplied descriptions/documents; the teacher need not reconstruct source/hash/signature metadata. TypeScript bounds retrieval and
 joins exact IDs, bytes, hashes and schema fields. It does not decide what the
 user meant or which legal combination should be proposed.
 
