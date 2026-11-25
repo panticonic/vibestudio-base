@@ -1,0 +1,5 @@
+# Mobile continuity findings
+
+Pre-edit inventory: Base reviewMobileContinuity.ts returned a profile ID and a closed action/reason pair; decideContinuity.nl produced that pair; entries.json/entriesGenerated.ts registered it. No executor consumes the action. SST skills/mobile-system-testing/open-continuity.ts alone graded it by private expected.action and reason substrings, in addition to seven independent native custody checks. Historical meta inventories remain historical. Host must bind mandatory meaning review to actual profile, observations and journal.
+
+The public value is now the requested finding, with native witnesses retained independently. The natural root owns evidence selection and interpretation, while existing native read helpers own profile scope. Current profile evidence remains mandatory; inspecting every archived profile is not a user obligation. No device mutation or service grant is added. Explicit native readbacks, source/build identity, protected workspace state and required returned answer remain strict. The original 0071 mixed enum/answer capture remains immutable and is not reassessed by this change.

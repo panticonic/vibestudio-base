@@ -320,9 +320,9 @@
     "additionalArguments": {}
   },
   "mobileContinuity": {
-    "program": "skills/open-user-goal/reviewMobileContinuity.ts",
+    "program": "skills/open-user-goal/reviewMobileContinuity.nl",
     "callable": "reviewMobileContinuity",
-    "resultType": "MobileContinuityOutcome",
+    "resultType": "MobileContinuityFinding",
     "skill": "mobileContinuity",
     "parameterNames": [
       "goal"
