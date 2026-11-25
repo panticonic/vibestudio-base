@@ -44,10 +44,19 @@ function transportErrorMetadata(error: unknown): NativeTransportErrorMetadata {
   let remaining = 8;
   const field = (value: object, key: string): unknown => {
     try {
-      return Reflect.get(value, key);
+      // Error identifiers may be inherited, but observing a failure must never
+      // execute an accessor supplied by the failed operation.
+      let current: object | null = value;
+      for (let depth = 0; current && depth < 6; depth++) {
+        const descriptor = Object.getOwnPropertyDescriptor(current, key);
+        if (descriptor)
+          return "value" in descriptor ? descriptor.value : undefined;
+        current = Object.getPrototypeOf(current);
+      }
     } catch {
-      return undefined;
+      // Proxies and foreign errors need not expose descriptors safely.
     }
+    return undefined;
   };
   const identifier = (value: unknown): string | undefined =>
     typeof value === "string" &&

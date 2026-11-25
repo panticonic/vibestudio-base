@@ -53,3 +53,9 @@ dependency errors, including existing sessionId declaration discrepancies.
 This does not assert a full Base build or standalone Core diagnostic repair.
 Original terminated cause remains OPEN; earlier instance audit bytes have
 already retired. Audit HTTP500/zero response bytes alone cannot identify DNS.
+
+Follow-up observer safety: bounded own DATA descriptors through at most six
+prototype levels skip accessors. A real rejected-fetch regression verifies
+getters never run and inherited data codes remain. Final 70/70 tests PASS
+(unit vibe-native-model-transport-full-20261125c, 726.3 MiB peak). Scoped
+Prettier and syntax lint PASS (zero errors; seven existing advisory warnings).
