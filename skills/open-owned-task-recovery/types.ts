@@ -27,6 +27,7 @@ export type OwnerLane = { id: string; title: string; maySend: boolean };
 export type LaneObservation = {
   lane: OwnerLane;
   basis: string;
+  /** Resolved owner only when explicitly requested by the inspector; the receipt retains its actual recipient. */
   owner: string | null;
   receipt: MessageReceipt | null;
   record: AttemptRecord | null;
