@@ -191,7 +191,7 @@ export default {
     "additionalArguments": {}
   },
   "launch-state": {
-    "program": "skills/open-user-goal/reconcilePanelLaunchState.ts",
+    "program": "skills/open-user-goal/reconcilePanelLaunchState.nl",
     "callable": "reconcilePanelLaunchState",
     "resultType": "LaunchResult | null",
     "skill": "panelLaunchState",
