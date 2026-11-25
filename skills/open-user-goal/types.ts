@@ -212,7 +212,8 @@ export type MobileContinuityEvidence = {
   transport: MobileTransportEvidence;
   routes: MobileRouteEvidence;
 };
-export type MobileContinuityOutcome = { profile: string; action: "resume" | "rebuild-shell" | "reacquire-route" | "hold"; reason: string };
+/** The user-requested finding; native profile and lease witnesses are captured separately. */
+export type MobileContinuityFinding = string;
 
 export type NotificationLane = { id: string; label: string; generation: number };
 export type NotificationRecord = {

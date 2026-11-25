@@ -321,9 +321,9 @@ export default {
     "additionalArguments": {}
   },
   "mobileContinuity": {
-    "program": "skills/open-user-goal/reviewMobileContinuity.ts",
+    "program": "skills/open-user-goal/reviewMobileContinuity.nl",
     "callable": "reviewMobileContinuity",
-    "resultType": "MobileContinuityOutcome",
+    "resultType": "MobileContinuityFinding",
     "skill": "mobileContinuity",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"46d1ecda3123f42c85fd6d112ce3205a09be7b94ba6eefd376117429c9fcef69"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"0a01e3c11895be16b8502a820b64a344ea0e3f90f1c15507c3de3df76437e8d0"};
