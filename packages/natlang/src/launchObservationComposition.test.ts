@@ -1,6 +1,6 @@
 /** TEST ONLY: scripted local gateway, real ProgramLoader and source; no provider or teacher registry. */
 import {it,expect} from "vitest";
-import {readFile,readdir,stat} from "node:fs/promises";
+import {readFile,readdir,stat,writeFile,mkdir} from "node:fs/promises";
 import {resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import {createEvalNatlang} from "@workspace/natlang";
@@ -74,9 +74,17 @@ for(const variant of ["companion-first","redundant-grouped","effect-only","read-
    const root=records.find(r=>r.definition?.name==="reconcilePanelLaunchState");
    const observer=records.find(r=>r.definition?.name==="observeLaunchScope");
    expect(root).toBeTruthy();expect(observer?.parent_call_id).toBe(root.call_id);
-   const nativeReads=records.filter(r=>r.definition?.name==="readLaunchSlot"&&r.parent_call_id===observer.call_id);
-   expect(nativeReads.length).toBeGreaterThan(0);
-   expect(observer.effects).toEqual([]); // physical service calls belong to the actual native callees
+   const artifact=process.env.NATLANG_TEST_LAUNCH_ARTIFACT_DIR;
+   if(artifact){await mkdir(artifact,{recursive:true});await writeFile(artifact+"/"+variant+".json",JSON.stringify({testOnly:true,noProviderInference:true,goal,events,records,result:actual.value,stagedReport},null,2)+"\n");}
+   // Ordinary same-task TS helpers are not extra invocations. Their actual
+   // service receipts belong to the semantic observer that calls the capability.
+   expect(observer.effects.every((e:any)=>e.service==="launchStateRead"&&e.method==="read")).toBe(true);
+   expect(observer.effects.length).toBe(variant==="foreign-required"?1:companion?(variant==="redundant-grouped"?4:3):2);
+   expect(root.effects.filter((e:any)=>e.service==="launchStateRead"&&["read","seal"].includes(e.method))).toEqual([]);
+   const allReads=records.flatMap(r=>r.effects).filter((e:any)=>e.service==="launchStateRead"&&e.method==="read");
+   expect(allReads.length).toBe(events.filter(e=>e.startsWith("read:")).length);
+   const verification=records.find(r=>r.definition?.name==="verifyLaunchScope");
+   if(variant!=="foreign-required"){expect(verification.parent_call_id).toBe(root.call_id);expect(verification.effects.some((e:any)=>e.method==="seal")).toBe(true);}
    if(variant==="private-note"){expect(stagedReport.readback).toEqual(active);expect((actual.value as any).handoff).toEqual(note);}
    else expect(stagedReport).toBeNull();
   }finally{runtime.close();}
