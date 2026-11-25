@@ -29,7 +29,15 @@ it("synchronous native verifiers use the same exact review projection",()=>{
  const proof={goal:"Explain coverage",pages:[{cursor:"start",next:"pending"}]};
  expect(observedContentReview(proof,contract(true),{findings:["Coverage stops here"]},["pages"]).semanticReviewInput.actual.observations).toEqual({pages:proof.pages});
 });
-it("does not request a paid prose review for a completed effect with no retained prose or required return",async()=>{
+it("retains native goal meaning review for pure effects without requiring an incidental return",async()=>{
  const result=await bindObservedContentReview(["observed"])({goal:"Pause the owned schedule",passed:true,checks:{native:true,answer:true},observed:{paused:true}},contract(false),{reason:"Incidental"});
- expect(result.semanticReviewRequired).toBe(false);expect(result.semanticReviewInput.actual.requestedReturn).toBeNull();
+ expect(result.semanticReviewRequired).toBe(true);expect(result.semanticReviewInput.actual.requestedReturn).toBeNull();
+});
+
+it("reviews a pure effect even if its optional returned explanation is wrong",async()=>{
+ const proof={goal:"Pause only the assigned schedule",passed:false,checks:{native:true,answer:false},observed:{scheduleId:"owned",paused:true}};
+ const result=await bindObservedContentReview(["observed"])(proof,contract(false),{reason:"wrong optional explanation"});
+ expect(result.passed).toBe(true);expect(result.semanticReviewRequired).toBe(true);
+ expect(result.semanticReviewInput.actual).toEqual({goal:proof.goal,observations:{observed:proof.observed},artifacts:{},requestedReturn:null});
+ expect(result.semanticReviewInput.expected).toEqual({goal:proof.goal,requestedReturnRequired:false});
 });

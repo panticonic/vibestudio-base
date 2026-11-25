@@ -1,0 +1,41 @@
+{
+  "mechanism": "Open-goal native meaning review is mandatory independently of whether a return/artifact is requested. Optional returned values remain excluded, native checks and required-return requirements unchanged.",
+  "consumers": [
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v23/google-workspace/skills/google-drive/open-goal-drive.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/base/packages/application-outcomes/observed-content-review.test.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/base/packages/application-outcomes/observed-content-review.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-api-readiness-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-asset-integrity-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-audience-response-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-capability-plan-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-chat-continuity-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-dictation-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-grimoire-scene-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-image-candidate-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-local-delivery-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-local-presentation-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-local-width-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-news-evidence-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-owned-task-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-pdf-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-personal-welcome-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-portfolio-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-provider-handoff-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-reconciliation-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-recovery-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-regency-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-scheduled-recovery-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-specialist-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-template-migration-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-tendril-route-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-terminal-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-unit-rollout-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/open-goal-workspace-assembly-managed.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/runner.ts",
+    "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/candidate/source-v36/system-testing/skills/system-testing/vcs-delivery-managed.ts"
+  ],
+  "exclusions": [
+    "Closed typed verifiers that do not call this open-goal helper retain their own contract and are separately audited.",
+    "Model engines consume model protocols, not this application outcome projection; helper imports only observed application outcomes, invocation types and semantic contracts. No engine transport/runtime policy change."
+  ]
+}
