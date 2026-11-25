@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { verifyOwnedOperations } from "./ownedOperationsOracle.js";
+import { verifyOwnedOperations, verifyOwnedOperationCustody } from "./ownedOperationsOracle.js";
 import type { Audit } from "./ownedOperations.js";
 // Pure oracle unit fixtures; none are product execution or teacher-collection evidence.
 function auditFixture(): Audit {
@@ -35,4 +35,26 @@ describe("independent owned lifecycle oracle", () => {
     if (mutation === "no-restart") audit.restarts = [];
     expect(verifyOwnedOperations(audit, expected, report).passed).toBe(false);
   });
+});
+
+describe("native custody independent of semantic answer expectations",()=>{
+ it("accepts actual differently worded/selected assessments without inventing requested findings",()=>{
+  const audit=auditFixture();audit.snapshots[2]!.value.checkpoints[1]!.assessment={role:"release",decision:"blocked",reason:"A differently judged actual conclusion",evidenceIds:["quality"]};
+  expect(verifyOwnedOperationCustody(audit).passed).toBe(true);
+  expect(verifyOwnedOperations(audit,expected,reportFixture(audit)).passed).toBe(false);
+ });
+ it("does not require a worker, checkpoint or restart when none was actually created",()=>{
+  const audit:Audit={programRequestedCleanup:false,opened:[],snapshots:[],restarts:[],retiredIds:[],destroyedContextIds:[],remainingEntityIds:[],remainingContextIds:[]};
+  expect(verifyOwnedOperationCustody(audit).passed).toBe(true);
+ });
+ it.each(["missing-readback","foreign-handle","wrong-role","changed-restart","live-worker","missing-context"])("rejects native custody corruption: %s",mutation=>{
+  const audit=auditFixture();
+  if(mutation==="missing-readback")audit.snapshots.pop();
+  if(mutation==="foreign-handle")audit.snapshots[0]!.handle={...audit.snapshots[0]!.handle,targetId:"foreign"};
+  if(mutation==="wrong-role")audit.snapshots[2]!.value.checkpoints[0]!.assessment.role="impact";
+  if(mutation==="changed-restart")audit.snapshots[1]!.value.revision=0;
+  if(mutation==="live-worker")audit.remainingEntityIds=[audit.opened[0]!.handle.id];
+  if(mutation==="missing-context")audit.destroyedContextIds=[];
+  expect(verifyOwnedOperationCustody(audit).passed).toBe(false);
+ });
 });

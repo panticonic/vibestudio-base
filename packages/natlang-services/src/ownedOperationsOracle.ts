@@ -1,9 +1,10 @@
+import { isDeepStrictEqual } from "node:util";
 import type { Audit } from "./ownedOperations.js";
 export type Expected = { kind: "incident-handoff" | "release-continuation";
   roles: Record<string, { decision?: string; decisions?: string[]; evidenceIds: string[] }>; decision: string };
 /** Test-owned exact oracle. Its private audit comes from fresh persisted-state/lifecycle readbacks, never the model's report. */
 export function verifyOwnedOperations(audit: Audit, expected: Expected, report: { kind: string; handoff: { decision: string; evidenceIds: string[] }; handles: Audit["opened"][number]["handle"][]; cleanup: { retiredIds: string[]; destroyedContextIds: string[] } }) {
-  const checks: Record<string, boolean> = {};
+  const checks: Record<string, boolean> = {...verifyOwnedOperationCustody(audit).checks};
   const sameSet = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
   const handles = audit.opened.map(row => row.handle);
   checks["exactRoles"] = sameSet(handles.map(row => row.role), Object.keys(expected.roles));
@@ -40,4 +41,35 @@ export function verifyOwnedOperations(audit: Audit, expected: Expected, report: 
   checks["actualNoOwnedWorkersRemain"] = audit.remainingEntityIds.length === 0;
   checks["actualNoOwnedContextsRemain"] = audit.remainingContextIds.length === 0;
   return { passed: Object.values(checks).every(Boolean), checks };
+}
+
+/** Independent native custody, without private semantic decisions or a required report echo. */
+export function verifyOwnedOperationCustody(audit: Audit) {
+  const handles=audit.opened.map(row=>row.handle);
+  const issued=(handle:Audit["opened"][number]["handle"])=>handles.some(actual=>isDeepStrictEqual(actual,handle));
+  const sameSet=(actual:string[],expected:string[])=>actual.length===expected.length &&
+    new Set(actual).size===actual.length && expected.every(id=>actual.includes(id));
+  const before=audit.snapshots.filter(row=>row.phase==="before-restart");
+  const after=audit.snapshots.filter(row=>row.phase==="after-restart");
+  const checks={
+    nativeDistinctOwners:new Set(handles.map(row=>row.id)).size===handles.length &&
+      new Set(handles.map(row=>row.contextId)).size===handles.length,
+    nativeOwnedReadbacks:audit.snapshots.every(row=>issued(row.handle) &&
+      row.value.revision===row.value.checkpoints.length && row.value.checkpoints.every((checkpoint,index)=>
+        checkpoint.revision===index+1 && checkpoint.assessment.role===row.handle.role)) &&
+      handles.every(handle=>{
+        const rows=audit.snapshots.filter(row=>isDeepStrictEqual(row.handle,handle));
+        const final=rows.findLast(row=>row.phase==="before-cleanup");
+        return !!final && rows.every(row=>row.value.revision<=final.value.revision &&
+          isDeepStrictEqual(row.value.checkpoints,final.value.checkpoints.slice(0,row.value.revision)));
+      }),
+    nativeRestartContinuity:before.length===audit.restarts.length && after.length===audit.restarts.length &&
+      audit.restarts.every((restart,index)=>issued(restart.handle) &&
+        Array.isArray(restart.before)&&restart.before.length>0&&Array.isArray(restart.after)&&restart.after.length>0 &&
+        isDeepStrictEqual(before[index]?.handle,restart.handle) && isDeepStrictEqual(after[index]?.handle,restart.handle) &&
+        isDeepStrictEqual(before[index]?.value,after[index]?.value)),
+    nativeRetiredWorkers:sameSet(audit.retiredIds,handles.map(row=>row.id)) && audit.remainingEntityIds.length===0,
+    nativeDestroyedContexts:sameSet(audit.destroyedContextIds,handles.map(row=>row.contextId)) && audit.remainingContextIds.length===0,
+  };
+  return {checks,passed:Object.values(checks).every(Boolean)};
 }
