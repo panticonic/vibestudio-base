@@ -331,6 +331,24 @@
       "hostMergedBeforePremiseMerge": 54
     },
     "canonicalDeclarationGenerationAndCheck": "vibe-continuity-declarations-20261126a PASS; four nullable-domain DTO updates generated; no SDK changes",
-    "remaining": "Final merged Native and Host checks executing; broader coordinator/oracle census remains open."
+    "remaining": "Live Native qualification not claimed. Full exporter159 run not qualified: plain Node cannot resolve selected source .js imports to .ts; unrelated project-profile synthetic fixtures also stale. Scoped shared binder/source-claim +actual optional/void-root cases38PASS. Broader coordinator/oracle census remains open.",
+    "finalChecks": {
+      "native": {
+        "passed": 227,
+        "unit": "vibe-continuity-final-native-20261126a"
+      },
+      "host": {
+        "passed": 38,
+        "unit": "vibe-continuity-scoped-host-20261126a"
+      },
+      "welcomePublic": {
+        "passed": 1,
+        "unit": "vibe-welcome-findings-public-20261126a"
+      },
+      "canonicalDeclarations": {
+        "passed": true,
+        "unit": "vibe-continuity-declarations-20261126a"
+      }
+    }
   }
 }
