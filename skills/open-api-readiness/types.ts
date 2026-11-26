@@ -28,3 +28,6 @@ export type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:Qui
   audit:QuietAudit|null;handoff:ReadinessArtifact|null};
 
 export type ApiReadinessResult = {plan:IntegrationReadinessPlan;review:BoundReport|null;facts:LookupFact[];handoff:ReadinessArtifact|null};
+
+/** Actual asynchronous selection observations, without any lookup or writer capability. */
+export type IntegrationHistory = {earlier:SelectionFrontier;current:SelectionFrontier};

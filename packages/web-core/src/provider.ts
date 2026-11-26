@@ -1,3 +1,4 @@
+import {isRpcAborted} from "@vibestudio/rpc";
 import type { ProviderName } from "./types.js";
 
 /**
@@ -48,4 +49,10 @@ export async function availableSearchProviders(probe: CredentialPresenceProbe | 
     if (await probe(SEARCH_PROVIDER_ORIGINS[provider])) providers.push(provider);
   }
   return [...providers, "duckduckgo"];
+}
+
+/** A refused/unavailable credential is not usable by this caller; an abandoned
+ * RPC ends the owning search rather than starting a different provider. */
+export function createCredentialPresenceProbe(resolve:(origin:string)=>Promise<unknown>):CredentialPresenceProbe {
+ return async origin=>{try{return await resolve(origin)!=null;}catch(error){if(isRpcAborted(error))throw error;return false;}};
 }

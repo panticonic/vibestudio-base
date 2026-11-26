@@ -539,7 +539,6 @@ export type { BridgeResult } from "./workOnBridgeDelivery/types.js";
 export type { ChatResult } from "./workOnChatContinuity/types.js";
 
 
-export type { ApiReadinessResult } from "./workOnApiReadinessGoal/types.js";
 
 export type { OwnedIllustrationResult } from "./generateOwnedIllustration/types.js";
 

@@ -1,3 +1,4 @@
+import { rpcCallerAbortedError } from "@vibestudio/rpc";
 import { beforeEach, expect, it, vi } from "vitest";
 import { searchStandard } from "./search.js";
 import { searchDuckDuckGo } from "./duckduckgo.js";
@@ -54,4 +55,13 @@ it("preserves cancellation rather than retrying it as a provider failure", async
   vi.mocked(searchTavily).mockImplementation(async () => { controller.abort(reason); throw reason; });
   await expect(searchStandard({ now: () => 1, hasCredentialForOrigin: async () => true }, ["question"], fetch, controller.signal)).rejects.toBe(reason);
   expect(searchBrave).not.toHaveBeenCalled();
+});
+
+it("preserves RPC abandonment without an ambient AbortSignal or provider fallback", async () => {
+  const reason = rpcCallerAbortedError("owner cancelled");
+  vi.mocked(searchTavily).mockRejectedValue(reason);
+  await expect(searchStandard({ now: () => 1, hasCredentialForOrigin: async () => true }, ["question"], fetch, undefined)).rejects.toBe(reason);
+  expect(searchBrave).not.toHaveBeenCalled();
+  expect(searchExa).not.toHaveBeenCalled();
+  expect(searchDuckDuckGo).not.toHaveBeenCalled();
 });
