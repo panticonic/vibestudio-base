@@ -1,8 +1,9 @@
 ---
-description: Select the exact owned launch slot and express a minimal typed requested change.
+description: Express the user's minimal requested patch from exact native launch observations.
 args:
   goal: string
-  index: LaunchIndex
+  selection: LaunchSelection
+  observations: LaunchObservations
 returns: LaunchPlan
 ---
-Use the active panel matching the request. A same-title archive has a different identity. Choose read for inspection only, test for an explicitly requested schema rejection experiment on disposable state, and write for requested state change. Form its minimal JSON merge patch. Null deletes a key, arrays replace the full list, and native validation can normalize numeric text. Preserve exact user input when the goal asks how that input validates. Set retain only for an explicitly private note.
+Use the selected identity and the actual observed state structure to express only the user's requested JSON merge patch. Panel titles and descriptive words are not JSON field paths. Preserve unrelated fields and owner edits; arrays replace the requested complete list and null deletes only the requested key. A read-only selection has no mutation patch. For an explicitly requested disposable validation experiment, preserve the exact test value, including values the native schema may reject, rather than substituting a valid fallback. Numeric text may be normalized by native validation. Carry the selected work kind and actual retention request. This plan does not establish authority, persistence, or success; native feedback and fresh observations determine whether it can be applied.

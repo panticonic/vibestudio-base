@@ -1,0 +1,15 @@
+{
+  "mechanism": "Plan exact native patches from actual observed field structure, after semantic identity selection",
+  "consumers": {
+    "skills/open-user-goal/reconcilePanelLaunchState.nl": "sole production caller of private planLaunchState and observeLaunchScope",
+    "skills/open-user-goal/reconcilePanelLaunchState/planLaunchState.nl": "currently receives only identity/title/purpose; no native state structure",
+    "skills/open-user-goal/reconcilePanelLaunchState/observeLaunchScope.nl": "existing scoped native reader callback",
+    "packages/natlang/src/launchObservationComposition.test.ts": "public actual ProgramLoader model-free controls"
+  },
+  "excluded": {
+    "skills/open-panel-launch-state": "native state/effect API and public LaunchPlan unchanged; exact authority, schema, digest and refusal stay native",
+    "other planning families": "no blanket planner-interface rewrite; Reconciliation independently owned concrete prior/current-value fix",
+    "teacher trajectories": "original wrong patch remains a failure; no replay or fabricated outcome"
+  },
+  "originalFailure": "Source56 wave0093 actual private planner constructed Dispatch.doors.pins because no live LaunchState input was available; native binding correctly refused."
+}

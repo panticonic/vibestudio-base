@@ -4,7 +4,7 @@ args:
   goal: string
 returns: LaunchResult | null
 ---
-Resolve the user's requested launch-state work from the owned index. Use planLaunchState to express the selected identity and minimal requested patch. Gather the evidence needed for that goal through observeLaunchScope, passing the owned index, plan, and workspace.readLaunchSlot as its read callback. If essential observations are unavailable, return null rather than inventing them.
+Resolve the user's requested launch-state work from the owned index through selectLaunchSlot. Gather the evidence needed for that selected scope through observeLaunchScope, passing the owned index, selection, and workspace.readLaunchSlot as its read callback. If the selected identity or essential observations are unavailable, return null rather than inventing them. Use planLaunchState with the actual selection and observations to express the minimal requested patch in the native state's real field structure. A panel title does not establish a JSON field path.
 
 Use decideLaunchChange to judge the selected opening/current observations. Apply an attempted change through applyAuthorizedLaunchChange: it binds the exact observed basis and patch, reviews native authority, and preserves native refusal. Use verifyLaunchScope with the same goal/index and earlier evidence to obtain the independently persisted active readback and any related observations the goal needs after the operation. Its read callback is workspace.readLaunchSlot and its active-state seal callback is workspace.readbackLaunchSlot. Refresh observations if native state or authority requires it; retain the actual evidence used for each judgment.
 

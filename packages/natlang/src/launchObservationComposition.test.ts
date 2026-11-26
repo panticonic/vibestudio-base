@@ -17,8 +17,9 @@ async function installedFs(){
  const source=(path:string)=>resolve(path.startsWith("skills/")?(owners.get(path.split("/")[1])??base):base,path);
  return {readFile:(p:string)=>readFile(source(p),"utf8"),readdir:(p:string)=>readdir(source(p),{withFileTypes:true}),stat:async(p:string)=>{const s=await stat(source(p));return{isDirectory:()=>s.isDirectory()};}};
 }
-const rootCode=`const index=await workspace.listLaunchSlots();const plan=await planLaunchState(goal,index);
-const before=await observeLaunchScope(goal,index,plan,workspace.readLaunchSlot);if(!before)return null;
+const rootCode=`const index=await workspace.listLaunchSlots();const selection=await selectLaunchSlot(goal,index);if(!selection)return null;
+const before=await observeLaunchScope(goal,index,selection,workspace.readLaunchSlot);if(!before)return null;
+const plan=await planLaunchState(goal,selection,before);
 const decision=await decideLaunchChange(goal,plan,before.opening,before.current);
 const application=await applyAuthorizedLaunchChange(plan,before.current,decision);
 const after=await verifyLaunchScope(goal,index,plan,before,decision,application.effect,workspace.readLaunchSlot,workspace.readbackLaunchSlot);if(!after)return null;
@@ -49,16 +50,16 @@ for(const variant of ["companion-first","redundant-grouped","effect-only","read-
    assignedAuthorityRead:{preflight:async(id:string)=>{events.push("authority:"+id);witness=variant!=="authority-denied";return {operationId:id,decision:witness?"allowed":"denied",leaves:[{capability:"state",resourceKey:"active",tier:"gated",status:witness?"granted":"denied"}]};}},
    launchStateWrite:{patch:async(id:string,basis:string,given:any)=>{events.push("patch:"+id);if(!witness||id!=="active"||basis!==active.digest)return null;writes++;active={...active,digest:"saved-v2",state:{...active.state,settings:{...active.state.settings,...given.settings}}};return{panelId:id,basis,kind:"saved",state:structuredClone(active.state),message:null};},stage:async(report:any)=>{if(variant!=="private-note")throw Error("Unrequested note");if(report.readback.digest!==active.digest||report.handoff!==null)return null;stagedReport=structuredClone(report);return note;}}};
   const before=variant==="foreign-required"?`const unavailable=await readSlot("foreign");if(unavailable!==null)throw Error("foreign capability leaked");return null;`:companion?variant==="companion-first"?
-   `const other=await readSlot(index.find(x=>x.purpose==="archive").panelId);const opening=await readSlot(plan.panelId);const current=await readSlot(plan.panelId);return {opening,current,companions:[other]};`:
-   `const opening=await readSlot(plan.panelId);const other=await readSlot("archive");await readSlot("archive");const current=await readSlot(plan.panelId);return {opening,current,companions:[other]};`:
-   `const opening=await readSlot(plan.panelId);const current=await readSlot(plan.panelId);return {opening,current,companions:[]};`;
+   `const other=await readSlot(index.find(x=>x.purpose==="archive").panelId);const opening=await readSlot(selection.panelId);const current=await readSlot(selection.panelId);return {opening,current,companions:[other]};`:
+   `const opening=await readSlot(selection.panelId);const other=await readSlot("archive");await readSlot("archive");const current=await readSlot(selection.panelId);return {opening,current,companions:[other]};`:
+   `const opening=await readSlot(selection.panelId);const current=await readSlot(selection.panelId);return {opening,current,companions:[]};`;
   const after=variant==="redundant-grouped"?`const other=await readSlot("archive");const readback=await sealSlot(plan.panelId);await readSlot("archive");return {readback,companions:[other]};`:
    `const readback=await sealSlot(plan.panelId);return {readback,companions:${companion?'[await readSlot("archive")]':'[]'}};`;
   const held=variant==="stale"||variant==="authority-denied";const readonly=variant==="read-only";
   const conclusion=companion?`if(!companionsBefore.length||!companionsAfter.length||JSON.stringify(companionsBefore[0])!==JSON.stringify(companionsAfter[0]))return {status:"held",summary:"Companion protection lacks matching observed evidence."};return {status:"applied",summary:"Saved active reverse order; the independently observed similarly named record is unchanged."};`:
    `return {status:${JSON.stringify(readonly?"confirmed":held?"held":"applied")},summary:${JSON.stringify(readonly?"The active persisted launch state is observed without a mutation.":held?"Current native basis or authority withheld this change.":"Saved active reverse order.")}};`;
-  const codes=[rootCode,`return {panelId:index.find(x=>x.purpose==="active").panelId,direction:${readonly?'"read"':'"write"'},patch:${readonly?'{}':'{settings:{order:"reverse"}}'},retain:${variant==="private-note"}};`,'if(typeof workspace!=="undefined"||typeof launchStateWrite!=="undefined"||typeof assignedAuthorityRead!=="undefined")throw Error("Observation acquired ambient authority");\n'+before,
-   ...(variant==="foreign-required"?[]:[`return {attempt:${!readonly},reason:"Requested minimal native change on the observed basis."};`,...(variant==="stale"||readonly?[]:authorityCodes),after,conclusion])];
+  const codes=[rootCode,`return {panelId:index.find(x=>x.purpose==="active").panelId,direction:${readonly?'"read"':'"write"'},retain:${variant==="private-note"}};`,'if(typeof workspace!=="undefined"||typeof launchStateWrite!=="undefined"||typeof assignedAuthorityRead!=="undefined")throw Error("Observation acquired ambient authority");\n'+before,
+   ...(variant==="foreign-required"?[]:[`if(!observations.current.state.settings.pins)throw Error("Planner lacks actual native state");return {...selection,patch:${readonly?'{}':'{settings:{order:"reverse"}}'}};`,`return {attempt:${!readonly},reason:"Requested minimal native change on the observed basis."};`,...(variant==="stale"||readonly?[]:authorityCodes),after,conclusion])];
   let step=0;
   const {rpc}=fakeRpc({records:{record:({record}:any)=>{records.push(record);return{recordId:record.call_id};}},turn:async input=>{contexts.push(input.context);if(step>=codes.length)throw Error("TEST-only script exhausted; no fallback provider");return toolCallMessage("eval",{code:codes[step++],finish:true});}});
   const runtime=createEvalNatlang({newFunction:testNewFunction(),owner:{kind:"user",objectKey:"test-only-launch-observation"},bindings:{rpc,fs:await installedFs()}});
@@ -69,6 +70,8 @@ for(const variant of ["companion-first","redundant-grouped","effect-only","read-
    else{expect((actual.value as any).result.status).toBe(readonly?"confirmed":held?"held":"applied");expect(writes).toBe(held||readonly?0:1);expect((actual.value as any).readback).toEqual(active);expect(events.some(e=>e==="seal:archive"||e==="patch:archive")).toBe(false);}
    expect(events.filter(e=>e==="read:archive").length).toBe(companion?(variant==="redundant-grouped"?4:2):0);
    expect(contexts.length).toBeGreaterThanOrEqual(3);
+   if(variant!=="foreign-required"){expect(JSON.stringify(contexts[3])).toContain("settings");expect(JSON.stringify(contexts[3])).toContain("pins");}
+
    // Actual scoped callback arguments reach the nested NL observation, rather than a generic root-only prompt.
    expect(JSON.stringify(contexts[2])).toContain("readSlot");expect(JSON.stringify(contexts[2])).toContain(goal);
    const root=records.find(r=>r.definition?.name==="reconcilePanelLaunchState");

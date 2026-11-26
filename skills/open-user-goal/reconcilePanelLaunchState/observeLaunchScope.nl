@@ -3,7 +3,7 @@ description: Acquire owned launch observations needed to understand the requeste
 args:
   goal: string
   index: LaunchIndex
-  plan: LaunchPlan
+  selection: LaunchSelection
   readSlot: "(panelId: string) => Promise<LaunchSnapshot | null>"
 returns: LaunchObservations | null
 ---
