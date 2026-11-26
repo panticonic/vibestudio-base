@@ -13,6 +13,7 @@
  *
  * The web-core module (providers, DOM parsing) loads on first use.
  */
+import {createCredentialPresenceProbe} from "@workspace/web-core/provider";
 import type { RpcCaller } from "@vibestudio/rpc";
 import type { WebClient } from "@workspace/web-core";
 import type { CredentialClient } from "./credentials.js";
@@ -33,13 +34,8 @@ export function createWebBinding(
             typeof input === "string" || input instanceof URL ? input : input.url,
             init
           )) as typeof fetch,
-        hasCredentialForOrigin: async (origin) => {
-          try {
-            return (await credentials.resolveCredential({ url: origin })) != null;
-          } catch {
-            return false;
-          }
-        },
+        hasCredentialForOrigin: createCredentialPresenceProbe(origin=>credentials.resolveCredential({url:origin})),
+
       })
     ));
   return {

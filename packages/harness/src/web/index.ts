@@ -150,3 +150,5 @@ export function createWebTools(deps: WebToolsDeps): ToolRegistration[] {
 }
 
 export type { SearchResult, ProviderName, CredentialPresenceProbe } from "@workspace/web-core";
+
+export {createCredentialPresenceProbe} from "@workspace/web-core/provider";

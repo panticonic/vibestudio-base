@@ -28,7 +28,7 @@ export {
   createAgentFileVisibility,
   createWorkspaceFileObservationStore,
 } from "./tools/index.js";
-export { createWebTools } from "./web/index.js";
+export { createWebTools, createCredentialPresenceProbe } from "./web/index.js";
 export { createImagegenTool } from "./tools/imagegen.js";
 
 export { authorNativeTool } from "./native-tool-authoring.js";

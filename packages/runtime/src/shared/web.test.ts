@@ -1,3 +1,4 @@
+import { rpcCallerAbortedError } from "@vibestudio/rpc";
 import { describe, expect, it, vi } from "vitest";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { createWebBinding } from "./web.js";
@@ -110,4 +111,13 @@ describe("web binding", () => {
     expect(call).toHaveBeenCalledWith("main", "chromiumFetch.openBrowser", ["https://example.com/"], undefined);
     await expect(web.fetch({ url: "ftp://example.com/" })).rejects.toThrow("must start with http");
   });
+});
+
+it("does not start egress after its credential RPC caller is abandoned", async () => {
+  const reason = rpcCallerAbortedError("owner cancelled");
+  const credentials = credentialsWith({fetch: async () => new Response(""), resolve: async () => { throw reason; }});
+  const web = createWebBinding(schemaRpcMock({ call: vi.fn() }) as never, credentials);
+  await expect(web.search({ queries: ["question"] })).rejects.toBe(reason);
+  expect(credentials.resolveCredential).toHaveBeenCalledTimes(1);
+  expect(credentials.fetch).not.toHaveBeenCalled();
 });

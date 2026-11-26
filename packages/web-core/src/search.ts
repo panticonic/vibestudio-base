@@ -1,3 +1,4 @@
+import { isRpcAborted } from "@vibestudio/rpc";
 import type { ProviderName, SearchResult } from "./types.js";
 import {
   WEB_SEARCH_MAX_QUERIES,
@@ -68,6 +69,7 @@ export async function searchStandard(
           };
         } catch (error) {
           if (signal?.aborted) throw signal.reason ?? error;
+          if (isRpcAborted(error)) throw error;
           failures[index]!.push(`${provider}: ${error instanceof Error ? error.message : String(error)}`);
           const message = failures[index]!.join("; ");
           return { query, text: message, sources: [], error: message };
