@@ -411,7 +411,7 @@ export default {
     "additionalArguments": {}
   },
   "testkit-closeout": {
-    "program": "skills/open-user-goal/compareTestkitCloseouts.ts",
+    "program": "skills/open-user-goal/compareTestkitCloseouts.nl",
     "callable": "compareTestkitCloseouts",
     "resultType": "CloseoutReport",
     "skill": "testkitCloseout",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"c64c821144db6a3340309f7ff612a9acd55d28cde0b1069fb7490cd73f76d246"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"00fb8e45331d3d3bf2a874b4fb100a57583f4e33d2075640a159b95912b88935"};

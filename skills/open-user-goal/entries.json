@@ -410,7 +410,7 @@
     "additionalArguments": {}
   },
   "testkit-closeout": {
-    "program": "skills/open-user-goal/compareTestkitCloseouts.ts",
+    "program": "skills/open-user-goal/compareTestkitCloseouts.nl",
     "callable": "compareTestkitCloseouts",
     "resultType": "CloseoutReport",
     "skill": "testkitCloseout",
