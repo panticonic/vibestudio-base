@@ -28,6 +28,15 @@ export async function assessObservedApplicationOutcome<T extends {passed:boolean
  const incorrectReturnValues:{definition:{name:string;source:string};value:unknown;valueJson:string;required:boolean;contribution:ApplicationReturnWitness}[]=[];
  const unreviewedReturnValues:{definition:{name:string;source:string};valueJson:string;contribution:ApplicationReturnWitness}[]=[];
  const unboundReturnContributions:{checks:readonly string[];reason:string}[]=[];
+ if(!invocation&&unchecked.length){
+  const prior=(verification as {unreviewedReturnValues?:typeof unreviewedReturnValues}).unreviewedReturnValues;
+  if(prior!==undefined&&!Array.isArray(prior))throw new Error("Unreviewed returns need their original value bindings");
+  for(const item of prior??[]){
+   if(!item.contribution||!isDeepStrictEqual(JSON.parse(item.contribution.root_value_json),actualValue)||item.contribution.checks.some(name=>!unchecked.includes(name)))
+    throw new Error("Rebound unreviewed return differs from the actual application value and source checks");
+   unreviewedReturnValues.push(item);
+  }
+ }
  if(selected.length&&invocation){
   const calls=new Map(invocation.calls.map(call=>[call.callId,call]));
   const roots=await invocation.returns(call=>call.parentCallId===null);

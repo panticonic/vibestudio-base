@@ -82,3 +82,9 @@ it("composes requested research and stored edits while keeping a receipt inciden
  expect(composeSemanticOutcomes(edit,wrongAnswer).passed).toBe(false);
  expect(()=>composeSemanticOutcomes(edit,missingEdit)).toThrow("Conflicting independent application observations");
 });
+
+it("refuses to lose an optional format-only role in an unbound composite",()=>{
+ const format={effects:{checks:["stored"],rationale:"Actual stored document."},returnedValue:{checks:["summary"],required:false,trainingEvidence:"format-only" as const,rationale:"Optional summary is checked only for representation."}};
+ const outcome=assessSemanticOutcome({passed:true,checks:{stored:true,summary:true}},format);
+ expect(()=>composeSemanticOutcomes(outcome)).toThrow(/explicit outer-root/);
+});

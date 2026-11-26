@@ -32,6 +32,8 @@ export function composeSemanticOutcomes(...outcomes: readonly Verification[]) {
   const incorrectReturnValues: unknown[] = [];
   for (const outcome of outcomes) {
     const assessed = assessSemanticOutcome(outcome);
+    if(!assessed.outcomeContract.returnedValue.required && assessed.outcomeContract.returnedValue.trainingEvidence==="format-only")
+      throw new Error("A composed format-only return needs an explicit outer-root training evidence binding; it cannot be silently promoted or discarded");
     for (const [name, value] of Object.entries(assessed.observedChecks)) {
       if (Object.hasOwn(observedChecks, name) && observedChecks[name] !== value)
         throw new Error(`Conflicting independent application observations: ${name}`);

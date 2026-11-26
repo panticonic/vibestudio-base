@@ -124,3 +124,11 @@ it("never fabricates a training hold against a mismatched actual root",async()=>
  expect(result.outcomeDimensions.returnedValue.unreviewedReturns).toBeUndefined();
  expect(result.unboundReturnContributions).toMatchObject([{reason:"application-value-does-not-match-recorded-root"}]);
 });
+
+it("preserves an already bound optional readout hold through same-value re-assessment",async()=>{
+ const rules={...optional,returnedValue:{...optional.returnedValue,trainingEvidence:"format-only" as const}},value="unreviewed";
+ const first=await assessObservedApplicationOutcome({passed:true,checks:{nativeWrite:true,answer:true}},rules,value,tree([{id:"root",parent:null,source:"root.nl",kind:"agent",value}]));
+ const again=await assessObservedApplicationOutcome(first,rules,value);
+ expect(again.outcomeDimensions.returnedValue.unreviewedReturns).toEqual(first.outcomeDimensions.returnedValue.unreviewedReturns);
+ await expect(assessObservedApplicationOutcome(first,rules,"different")).rejects.toThrow(/Rebound unreviewed/);
+});
