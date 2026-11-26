@@ -5,12 +5,12 @@
   "serviceBinding": "explicit",
   "targets": {
     "main": {
-      "entry": "workTowardLocalDelivery.ts"
+      "entry": "workTowardLocalDelivery.nl"
     }
   },
   "serviceScopes": {
     "localDeliveryCatalog": [
-      "workTowardLocalDelivery.ts"
+      "workTowardLocalDelivery.nl"
     ],
     "localDeliveryHistory": [],
     "localDeliverySend": [

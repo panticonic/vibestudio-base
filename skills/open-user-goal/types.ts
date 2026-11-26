@@ -550,7 +550,6 @@ export type { RecoveryHandoffOutcome, RecoveryHandoffDirective, RecoveryHandoffI
 export * from "./workOnProblemReportGoal/types.js";
 
 export type { DictationGoalReport } from "./workOnDictationHandoffGoal/types.js";
-export type { SpecialistGoalReport } from "./workOnSpecialistHandoffGoal/types.js";
 export * from "./workOnProviderHandoffGoal/types.js";
 
 
@@ -575,7 +574,6 @@ export type { OwnedIllustrationResult } from "./generateOwnedIllustration/types.
 
 export type { DevelopmentAuditFindings } from "./reviewDevelopmentAudit/types.js";
 
-export type { SpecialistResult } from "./workOnSpecialistHandoffGoal/types.js";
 
 export type { DictationResult } from "./workOnDictationHandoffGoal/types.js";
 

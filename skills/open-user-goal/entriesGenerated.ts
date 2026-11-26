@@ -641,7 +641,7 @@ export default {
     "additionalArguments": {}
   },
   "specialist-handoff": {
-    "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.ts",
+    "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
     "callable": "workOnSpecialistHandoffGoal",
     "resultType": "SpecialistResult",
     "skill": "specialistHandoff",
@@ -951,7 +951,7 @@ export default {
     "additionalArguments": {}
   },
   "local-delivery": {
-    "program": "skills/open-local-delivery/workTowardLocalDelivery.ts",
+    "program": "skills/open-local-delivery/workTowardLocalDelivery.nl",
     "callable": "workTowardLocalDelivery",
     "resultType": "LocalDeliveryReport",
     "skill": "localDelivery",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"4adad101d389ea9e0ec32eea135f7fd0365879842d9e3f9cce4a9ce31118d2d3"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"f9a787a75cee131d26c7f6437272cf115a5bcc17120f8c3f374a1b8f9fd293d7"};

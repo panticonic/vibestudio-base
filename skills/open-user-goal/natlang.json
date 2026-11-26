@@ -243,6 +243,20 @@
       "types": [
         "NewsEvidenceResult"
       ]
+    },
+    "workOnSpecialistHandoffGoal": {
+      "mounts": [
+        "workOnSpecialistHandoffGoal/workspace",
+        "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/workspace",
+        "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/inspectSpecialistPresence/agents",
+        "workOnSpecialistHandoffGoal/reviewSpecialistHistory/development"
+      ],
+      "types": [
+        "SpecialistGoalReport",
+        "SpecialistResult",
+        "SpecialistEvidence",
+        "SpecialistHandoffIntent"
+      ]
     }
   },
   "workspaceModules": {
@@ -318,7 +332,6 @@
     "workOnDictationHandoffGoal/workspace": "skills/open-dictation-handoff",
     "workOnDictationHandoffGoal/reviewRetainedDictation/dictation": "skills/offline-dictation",
     "workOnSpecialistHandoffGoal/workspace": "skills/open-specialist-handoff",
-    "workOnSpecialistHandoffGoal/agents": "skills/agents/channel-membership",
     "workOnSpecialistHandoffGoal/reviewSpecialistHistory/development": "skills/agentic-development/natlang",
     "workOnProviderHandoffGoal/workspace": "skills/open-provider-handoff",
     "workOnProviderHandoffGoal/reviewRetainedApproval/authority": "skills/capabilities/natlang",
@@ -373,7 +386,9 @@
     "publication": "skills/publish-preflight",
     "pdf": "skills/pdf-intake",
     "correctVaultFromPdf/pdf": "skills/pdf-intake",
-    "correctVaultFromPdf/vault": "skills/spectrolite-review"
+    "correctVaultFromPdf/vault": "skills/spectrolite-review",
+    "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/workspace": "skills/open-specialist-handoff",
+    "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/inspectSpecialistPresence/agents": "skills/agents/channel-membership"
   },
   "serviceScopes": {
     "publicBrief": [

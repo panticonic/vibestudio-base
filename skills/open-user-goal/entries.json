@@ -640,7 +640,7 @@
     "additionalArguments": {}
   },
   "specialist-handoff": {
-    "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.ts",
+    "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
     "callable": "workOnSpecialistHandoffGoal",
     "resultType": "SpecialistResult",
     "skill": "specialistHandoff",
@@ -950,7 +950,7 @@
     "additionalArguments": {}
   },
   "local-delivery": {
-    "program": "skills/open-local-delivery/workTowardLocalDelivery.ts",
+    "program": "skills/open-local-delivery/workTowardLocalDelivery.nl",
     "callable": "workTowardLocalDelivery",
     "resultType": "LocalDeliveryReport",
     "skill": "localDelivery",

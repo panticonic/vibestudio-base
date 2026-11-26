@@ -6,4 +6,4 @@ args:
   target: LocalObservation
 returns: string
 ---
-Return only the requested note text. Include the exact approved facts, version and requested next action supported by the goal and observations. Qualify uncertainty if the user's authorized note asks for it. Keep mentions and any new recipients out of the body. The separate current roster selection determines the only receiver.
+Return only the requested note text. Include the exact approved facts, version and requested next action supported by the goal and observations. Qualify uncertainty if the user's authorized note asks for it. Preserve any literal names or @mentions the user requested in the note text; they are body content, not additional addressees. The separately bound current roster selection determines the only receiver. Do not expand that recipient set.
