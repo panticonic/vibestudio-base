@@ -6666,7 +6666,13 @@ export function inspect(id: string, ref: string): Promise<SourceAttributionRoot>
 
 type SourceAttributionClaim = { fragment: string; span: string; origin: "external" | "native" | "unresolved"; intent: string | null; refs: string[] };
 
-type SourceAttributionConclusion = { disposition: "supported" | "partial" | "unverifiable"; claims: SourceAttributionClaim[] };
+type SourceAttributionConclusion = {
+  /** The requested explanation, including honest limits when no current span can be attributed. */
+  explanation: string;
+  disposition: "supported" | "partial" | "unverifiable";
+  /** Only actual inspected native spans and roots belong in these references. */
+  claims: SourceAttributionClaim[];
+};
 
 type SourceAttributionReceipt = { state: string; status: "retained" | "authority-closed" | "stale"; path: string | null; sha256: string | null };
 

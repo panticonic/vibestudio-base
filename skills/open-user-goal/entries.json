@@ -620,9 +620,9 @@
     "additionalArguments": {}
   },
   "extension-dossier": {
-    "program": "skills/open-user-goal/reviewExtensionDossier.ts",
+    "program": "skills/open-user-goal/reviewExtensionDossier.nl",
     "callable": "reviewExtensionDossier",
-    "resultType": "ExtensionDossierOutcome",
+    "resultType": "ExtensionDossierFindings",
     "skill": "extensionDossier",
     "parameterNames": [
       "goal"

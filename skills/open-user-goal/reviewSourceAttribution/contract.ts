@@ -10,6 +10,12 @@ export type SourceAttributionRoot = { ref: string; kind: string; label: string; 
 export type SourceAttributionEvidence = { selected: SourceAttributionSelection; trace: SourceAttributionTrace; roots: SourceAttributionRoot[] };
 export type SourceAttributionInvestigation = { files: SourceAttributionFile[]; evidence: SourceAttributionEvidence[] };
 export type SourceAttributionClaim = { fragment: string; span: string; origin: "external" | "native" | "unresolved"; intent: string | null; refs: string[] };
-export type SourceAttributionConclusion = { disposition: "supported" | "partial" | "unverifiable"; claims: SourceAttributionClaim[] };
+export type SourceAttributionConclusion = {
+  /** The requested explanation, including honest limits when no current span can be attributed. */
+  explanation: string;
+  disposition: "supported" | "partial" | "unverifiable";
+  /** Only actual inspected native spans and roots belong in these references. */
+  claims: SourceAttributionClaim[];
+};
 export type SourceAttributionReceipt = { state: string; status: "retained" | "authority-closed" | "stale"; path: string | null; sha256: string | null };
 export type SourceAttributionReport = { conclusion: SourceAttributionConclusion; receipt: SourceAttributionReceipt | null };

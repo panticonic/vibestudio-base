@@ -33,7 +33,7 @@ it("loads the actual hierarchical attribution entry and carries independent nati
   'return files.map(file=>({candidate:file.candidate.id,fragment:file.fragments[0].id}));',
   'const trace=await content.traceOwnedRange(assignment,file,selected);const roots=[];for(const span of trace.spans)if(span.work)roots.push(await intent.inspectOwnedRoot(assignment,span.work));return {selected,trace,roots};',
   'const trace=await content.traceOwnedRange(assignment,file,selected);const roots=[];for(const span of trace.spans)if(span.work)roots.push(await intent.inspectOwnedRoot(assignment,span.work));return {selected,trace,roots};',
-  'return {disposition:"supported",claims:evidence.flatMap(item=>item.trace.spans.map(span=>({fragment:item.selected.fragment,span:span.id,origin:"native",intent:item.roots[0].intent,refs:item.roots.map(root=>root.ref)})))};',
+  'return {explanation:"The satellite value was copied from main, where the recorded work set the cap to three.",disposition:"supported",claims:evidence.flatMap(item=>item.trace.spans.map(span=>({fragment:item.selected.fragment,span:span.id,origin:"native",intent:item.roots[0].intent,refs:item.roots.map(root=>root.ref)})))};',
  ],assignment.goal);
  expect(calls.filter(call=>call.startsWith("read:"))).toEqual(["read:main","read:satellite"]);
  expect(calls.filter(call=>call.startsWith("trace:"))).toEqual(["trace:main","trace:satellite"]);

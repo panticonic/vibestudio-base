@@ -652,7 +652,6 @@
     "workOnProviderHandoffGoal/workspace": "skills/open-provider-handoff",
     "workOnProviderHandoffGoal/reviewRetainedApproval/authority": "skills/capabilities/natlang",
     "workOnProviderHandoffGoal/reviewRetainedDelivery/conversation": "skills/conversation-evidence-review",
-    "reviewExtensionDossier/extensiondev": "skills/extensiondev/natlang",
     "workOnProblemReportGoal/reporter": "skills/problem-reporting/natlang",
     "workOnRecoveryHandoff/scratch": "skills/scratch-handoff",
     "workOnAssemblyGoal/workspace": "skills/open-workspace-assembly",
@@ -708,6 +707,7 @@
     "workOnDemoPortfolio/investigatePortfolio/portfolio": "skills/open-demo-portfolio",
     "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioGarden/reviewer": "skills/examples-review",
     "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review",
-    "reviewRetainedMemory/investigateRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation"
+    "reviewRetainedMemory/investigateRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation",
+    "reviewExtensionDossier/investigateDossier/extensiondev": "skills/extensiondev/natlang"
   }
 }

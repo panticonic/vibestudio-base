@@ -621,9 +621,9 @@ export default {
     "additionalArguments": {}
   },
   "extension-dossier": {
-    "program": "skills/open-user-goal/reviewExtensionDossier.ts",
+    "program": "skills/open-user-goal/reviewExtensionDossier.nl",
     "callable": "reviewExtensionDossier",
-    "resultType": "ExtensionDossierOutcome",
+    "resultType": "ExtensionDossierFindings",
     "skill": "extensionDossier",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"4b976fbda1b6090aa424d09afae40f55ef6a6911ebc69e6cce5a7f22643617ca"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"1a6c2f056214d23853bdb22a84e06a268a66faab0386c7aaf36d35cec79b77c3"};
