@@ -6689,7 +6689,7 @@ export function discover(): Promise<SmokeAssignment>;
 export function scan(id: string): Promise<SmokeSource>;`,
   workspaceSmokeRuntime: `/** Check the exact approved owned smoke contract in the installed local package. */
 
-type SmokeRuntime = { packageName: string; exportName: string; callable: boolean; value: unknown; runDigest: string };
+type SmokeRuntime = { packageName: string; exportName: string; callable: boolean; value: unknown; matchesAccepted:boolean; runDigest: string };
 
 /** Check the exact approved owned smoke contract in the installed local package. */
 export function run(id: string, path: string, digest: string): Promise<SmokeRuntime>;`,

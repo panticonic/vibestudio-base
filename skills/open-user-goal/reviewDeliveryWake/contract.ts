@@ -8,10 +8,9 @@ export type DeliveryEnvelope = { id: string; sequence: number; name: string; kin
 export type DeliveryMailbox = { deliveryId: string; event: string; sequence: number; recipient: string; revision: number; state: string };
 export type DeliveryWakeEvidence = { connection: DeliveryConnection; current: DeliveryTarget | null; cursor: number; pending: DeliveryBound | null;
   rangeComplete: boolean; events: DeliveryEnvelope[]; mailbox: DeliveryMailbox[]; contextRows: number; contextCopies: number };
-export type DeliveryWakeOutcome = "advance" | "confirmed" | "hold-connection" | "hold-recipient" | "hold-revision" |
-  "hold-cursor" | "hold-evidence" | "hold-policy";
 export type DeliveryMatch = { event: DeliveryEnvelope | null; mailbox: DeliveryMailbox | null };
-export type DeliveryWakeChoice = { disposition: DeliveryWakeOutcome; event: DeliveryEnvelope | null };
 export type DeliveryWakeReceipt = { event: string; deliveryId: string; revision: number; cursor: number; newRows: number;
   repeatRows: number; contextRows: number; contextCopies: number };
-export type DeliveryWakeReport = { choice: DeliveryWakeChoice; receipt: DeliveryWakeReceipt | null };
+export type DeliveryWakeFinding = string;
+export type DeliveryWakePlan = {recover:boolean;finding:string};
+export type DeliveryWakeInvestigation = {evidence:DeliveryWakeEvidence;match:DeliveryMatch;plan:DeliveryWakePlan};

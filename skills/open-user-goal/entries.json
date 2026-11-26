@@ -30,9 +30,9 @@
     "additionalArguments": {}
   },
   "delivery-wake": {
-    "program": "skills/open-user-goal/reviewDeliveryWake.ts",
+    "program": "skills/open-user-goal/reviewDeliveryWake.nl",
     "callable": "reviewDeliveryWake",
-    "resultType": "DeliveryWakeReport",
+    "resultType": "DeliveryWakeFinding",
     "skill": "deliveryWake",
     "parameterNames": [
       "goal"
@@ -470,9 +470,9 @@
     "additionalArguments": {}
   },
   "workspace-smoke": {
-    "program": "skills/open-user-goal/reviewWorkspaceSmoke.ts",
+    "program": "skills/open-user-goal/reviewWorkspaceSmoke.nl",
     "callable": "reviewWorkspaceSmoke",
-    "resultType": "WorkspaceSmokeReport",
+    "resultType": "WorkspaceSmokeFinding",
     "skill": "workspaceSmoke",
     "parameterNames": [
       "goal"

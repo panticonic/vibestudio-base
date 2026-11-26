@@ -1,7 +1,7 @@
-# Recover an owned channel delivery after wake
+# Delivery continuity findings
 
-1. Discover the requested event, recipient revision, saved observation point and authorized recovery scope.
-2. Open one bounded current client observation. Keep the first rejected attempt and recover the one ready subscription when possible. Read the exact projector's cursor and recipient mailbox using a nested inspection lambda.
-3. Decide whether the requested receiver and exact terminal are current, whether a retained detach range can be safely completed, and whether to hold for missing or mismatched evidence. A second reasoning lambda checks the exact native event and recipient revision.
-4. Advance one approved same-recipient native backfill only after matching the saved cursor and present native range, preserving existing receipts.
-5. Return the actual verified event, preservation facts and optional wake proof. The independent oracle reads native normalized rows and the foreign/old receiver's unaffected state. Transport, SQLite, cursor advancement and exact checking are crisp.
+The public NL root owns the user's continuity question and any requested recovery. Its private investigation reads the original receiver, matches the actual addressed event, and interprets readiness, revision, cursor, range and mailbox evidence. This subtree has no recovery writer.
+
+TypeScript preserves exact native I/O and identity matching. The native service admits recovery only for the current owned receiver and complete range, retains its actual mailbox acknowledgment, and allows redundant reads or acknowledgment of the same already completed effect without duplicating delivery.
+
+A query or permission alone does not request recovery. An original failed terminal remains a real outcome. Requested explanations remain required after recovery; optional enum and receipt echoes are absent from the public finding. Mandatory meaning review binds actual history, current state and native effect evidence. No golden disposition or read-once route defines teacher success.
