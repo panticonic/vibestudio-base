@@ -360,7 +360,8 @@
         "compareTestkitCloseouts/readAttempt/session"
       ],
       "types": [
-        "CloseoutReport"
+        "CloseoutReport",
+        "CloseoutInquiry"
       ]
     },
     "chooseAudienceResponse": {
