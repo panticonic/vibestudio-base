@@ -2318,28 +2318,12 @@ export function describe(id:string):Promise<IntentDescription|null>;
 export function inspect(methodId:string,scope:string):Promise<IntentObservation|null>;`,
   nativeIntentHandoff: `/** Retain the expressly authorized private intent discovery result. */
 
-type IntentNotice={title:string;contextId:string;notePath:string;skillName:string;workerKey:string};
-
-type IntentCapabilitySelection={methodIds:string[]};
-
-type IntentDescription={id:string;name:string;description:string;digest:string};
-
-type IntentAction={methodId:string;scope:string};
-
-type IntentPlan={actions:IntentAction[];retain:boolean};
-
-type IntentObservation={methodId:string;scope:string;status:"observed"|"missing";coordinate:string|null;
-  details:string[];digest:string|null};
-
 type IntentOutcome={status:"observed"|"partial"|"unavailable";summary:string};
 
 type IntentNote={path:string;digest:string};
 
-type IntentReport={notice:IntentNotice;selection:IntentCapabilitySelection;capabilities:IntentDescription[];plan:IntentPlan;
-  evidence:IntentObservation[];outcome:IntentOutcome;handoff:IntentNote|null};
-
 /** Retain the expressly authorized private intent discovery result. */
-export function stage(report:IntentReport):Promise<IntentNote|null>;`,
+export function stage(outcome:IntentOutcome):Promise<IntentNote|null>;`,
   routeEvidenceRead: `/** Discover and verify exact authorized local route evidence. */
 
 type EvidenceBasis="working"|"committed"|"earlier"|"private-copy"|"comparison"|"external"|"alternate-link";
@@ -2404,7 +2388,7 @@ type LaunchSnapshot={panelId:string;entryKey:string;entityId:string;contextId:st
 
 type LaunchPatch=Record<string,unknown>;
 
-type LaunchAuthorityChoice={operationId:string;label:string};
+type LaunchAuthorityChoice={id:string;label:string};
 
 type LaunchAuthorityScope={capability:string;resourceKey:string};
 
@@ -2436,7 +2420,7 @@ type LaunchSnapshot={panelId:string;entryKey:string;entityId:string;contextId:st
 
 type LaunchDecision={attempt:boolean;reason:string};
 
-type LaunchAuthorityChoice={operationId:string;label:string};
+type LaunchAuthorityChoice={id:string;label:string};
 
 type LaunchAuthorityScope={capability:string;resourceKey:string};
 
@@ -5159,19 +5143,41 @@ export function stage(): Promise<TerminalHandoff | null>;`,
 
 type CurrentMemo = { title: string; text: string; sha256: string };
 
-type SkillRow = { name: string; description: string; dirPath: string; skillPath: string };
+type SkillRow = {
+  name: string;
+  description: string;
+  dirPath: string;
+  skillPath: string;
+};
 
-type WorkspaceRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+type WorkspaceRevision =
+  | { kind: "event"; eventId: string }
+  | { kind: "application"; applicationId: string };
 
-type PlanningState = { memo: CurrentMemo | null; skillIndex: SkillRow[]; skillIndexComplete: boolean; sourceRevision: WorkspaceRevision; stageAuthorized: boolean };
+type PlanningState = {
+  memo: CurrentMemo | null;
+  skillIndex: SkillRow[];
+  skillIndexComplete: boolean;
+  sourceRevision: WorkspaceRevision;
+  stageAuthorized: boolean;
+};
 
 /** Read the exact owned memo and current installed skill inventory for planning. */
 export function observe(): Promise<PlanningState>;`,
   docPlanCatalog: `/** Read the current role-filtered documentation and concrete call schemas. */
 
-type CatalogQuery = { query: string; surface: "service" | "runtime" | "workspace" };
+type CatalogQuery = {
+  query: string;
+  surface: "service" | "runtime" | "workspace";
+};
 
-type DocHit = { id: string; surface: string; qualifiedName: string; title: string; description?: string };
+type DocHit = {
+  id: string;
+  surface: string;
+  qualifiedName: string;
+  title: string;
+  description?: string;
+};
 
 type DetailedCapability = DocHit & {
   sha256: string;
@@ -5183,7 +5189,11 @@ type DetailedCapability = DocHit & {
   access: unknown;
 };
 
-type ServiceOverview = { serviceCount: number; serviceNames: string[]; surfaces: { surface: string; count: number }[] };
+type ServiceOverview = {
+  serviceCount: number;
+  serviceNames: string[];
+  surfaces: { surface: string; count: number }[];
+};
 
 /** Read the current role-filtered documentation and concrete call schemas. */
 export function search(query: CatalogQuery): Promise<DocHit[]>;
@@ -5198,29 +5208,63 @@ export function overview(): Promise<ServiceOverview>;
 export function availableMethod(name: string): Promise<boolean>;`,
   docPlanSkills: `/** Load bounded passages from an installed skill in the current planning context. */
 
-type WorkspaceRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+type WorkspaceRevision =
+  | { kind: "event"; eventId: string }
+  | { kind: "application"; applicationId: string };
 
-type SkillSourceRevision = { state: WorkspaceRevision; repositoryId: string; fileId: string; contentHash: string };
+type SkillSourceRevision = {
+  state: WorkspaceRevision;
+  repositoryId: string;
+  fileId: string;
+  contentHash: string;
+};
 
 type KnowledgeExcerpt = { heading: string; text: string };
 
-type InstalledKnowledge = { skillPath: string; sha256: string; revision: SkillSourceRevision; excerpts: KnowledgeExcerpt[] };
+type InstalledKnowledge = {
+  skillPath: string;
+  sha256: string;
+  revision: SkillSourceRevision;
+  excerpts: KnowledgeExcerpt[];
+};
 
 /** Load bounded passages from an installed skill in the current planning context. */
 export function load(dirPath: string, focus: string[]): Promise<InstalledKnowledge | null>;`,
   docPlanHandoff: `/** Commit an authorized ready plan into the owned scratch workspace. */
 
-type WorkspaceRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+type WorkspaceRevision =
+  | { kind: "event"; eventId: string }
+  | { kind: "application"; applicationId: string };
 
-type PlanStep = { id: string; sha256: string; argumentNames: string[]; signature: string | null; purpose: string };
+type PlanStep = {
+  id: string;
+  sha256: string;
+  argumentNames: string[];
+  signature: string | null;
+  purpose: string;
+};
 
-type SkillSourceRevision = { state: WorkspaceRevision; repositoryId: string; fileId: string; contentHash: string };
+type SkillSourceRevision = {
+  state: WorkspaceRevision;
+  repositoryId: string;
+  fileId: string;
+  contentHash: string;
+};
 
-type KnowledgeCitation = { skillPath: string; sha256: string; revision: SkillSourceRevision; quote: string };
+type KnowledgeCitation = {
+  skillPath: string;
+  sha256: string;
+  revision: SkillSourceRevision;
+  quote: string;
+};
 
 type MissingCapability = { kind: "method" | "skill"; name: string };
 
-type ServiceOverview = { serviceCount: number; serviceNames: string[]; surfaces: { surface: string; count: number }[] };
+type ServiceOverview = {
+  serviceCount: number;
+  serviceNames: string[];
+  surfaces: { surface: string; count: number }[];
+};
 
 type CapabilityPlan = {
   status: "ready" | "hold";
@@ -5393,11 +5437,36 @@ type RunProgram = {
   samples: RunSample[];
 };
 
+type RuntimeProgramInput = {
+  kind: "program";
+  goal: string;
+  path: string;
+  compiler: "unchecked" | "passed" | "failed";
+  diagnostic:
+    | "callable-scope"
+    | "result-type"
+    | "unavailable-service"
+    | "missing-import"
+    | "other"
+    | null;
+  call: null | {
+    id: string;
+    status: "returned" | "failed" | "running";
+    outputChecked: boolean;
+    exactSameInput: boolean;
+  };
+  userRequestedRetry: boolean;
+  execution?: {
+    id: string;
+    state: "verified" | "unchecked" | "failed" | "stale";
+  };
+};
+
 type RunInspection = {
   programId: string;
   revision: string;
   callable: string | null;
-  evidence: unknown;
+  evidence: RuntimeProgramInput;
 };
 
 /** Discover and compile the owned current workspace program and its authorized sample scope. */
@@ -5411,6 +5480,31 @@ type RunOutcome = "returned" | "rejected" | "interrupted";
 
 type StartedRun = { id: string; status: RunOutcome };
 
+type RuntimeProgramInput = {
+  kind: "program";
+  goal: string;
+  path: string;
+  compiler: "unchecked" | "passed" | "failed";
+  diagnostic:
+    | "callable-scope"
+    | "result-type"
+    | "unavailable-service"
+    | "missing-import"
+    | "other"
+    | null;
+  call: null | {
+    id: string;
+    status: "returned" | "failed" | "running";
+    outputChecked: boolean;
+    exactSameInput: boolean;
+  };
+  userRequestedRetry: boolean;
+  execution?: {
+    id: string;
+    state: "verified" | "unchecked" | "failed" | "stale";
+  };
+};
+
 type ProgramOutputReceipt = {
   id: string;
   sampleId: string;
@@ -5420,7 +5514,7 @@ type ProgramOutputReceipt = {
   verification: "verified" | "unchecked" | "mismatch" | "stale" | "failed";
   output: unknown;
   error: string | null;
-  evidence: unknown;
+  evidence: RuntimeProgramInput;
 };
 
 /** Run an authorized typed sample and independently read its retained native output. */
@@ -5446,9 +5540,19 @@ type AuthoringSource = {
 
 type AuthoringSelection = { candidateId: string; baselineId: string | null };
 
+type AuthoringContract = {
+  entry: string;
+  expectedParameters: string[] | null;
+  expectedReturn: string | null;
+  declaredServices: string[] | null;
+  expectedServiceScopes?: Record<string, string[] | null>;
+  requiredHelpers: string[];
+  preserveBaseline: boolean;
+};
+
 type SelectedAuthoring = {
   selection: AuthoringSelection;
-  request: { goal: string; compare: boolean; contract: unknown };
+  request: { goal: string; compare: boolean; contract: AuthoringContract };
 };
 
 /** Discover authoring records and bind a candidate to its released evidence and authorized review brief. */
@@ -6339,9 +6443,12 @@ type SuiteRequest = { operationId: string; goal: string; target: string; suite: 
 type PackageObservation = {
   operationId: string; target: string; source: string; mainRevision: string; workingRevision: string;
   name: string; baselineName: string; workingDigest: string; baselineDigest: string;
+  /** Resolved worker declaration identity; name is not an npm package name. */
   receiver: { protocol: string; source: string; name: string; className: string | null; targetId: string | null } | null;
+  /** Build unit identity; name is the package name. */
   catalog: { source: string; name: string; kind: string } | null;
   baselineValue: PackageValue; workingValue: PackageValue;
+  /** Native join against the actual worker declaration, class, protocol and repository. */
   declaredReceiverMatches: boolean; scopeMatches: boolean; targetFieldMatches: boolean;
   suiteBlockedBy: string | null;
   suiteRequest: SuiteRequest | null;
@@ -6364,9 +6471,12 @@ type SuiteRequest = { operationId: string; goal: string; target: string; suite: 
 type PackageObservation = {
   operationId: string; target: string; source: string; mainRevision: string; workingRevision: string;
   name: string; baselineName: string; workingDigest: string; baselineDigest: string;
+  /** Resolved worker declaration identity; name is not an npm package name. */
   receiver: { protocol: string; source: string; name: string; className: string | null; targetId: string | null } | null;
+  /** Build unit identity; name is the package name. */
   catalog: { source: string; name: string; kind: string } | null;
   baselineValue: PackageValue; workingValue: PackageValue;
+  /** Native join against the actual worker declaration, class, protocol and repository. */
   declaredReceiverMatches: boolean; scopeMatches: boolean; targetFieldMatches: boolean;
   suiteBlockedBy: string | null;
   suiteRequest: SuiteRequest | null;
@@ -6516,7 +6626,7 @@ export function search(id: string, phrase: string): Promise<RecordedCandidate[]>
 
 type RecordedCohort = { ref: string; paths: { path: string; count: number }[]; complete: boolean };
 
-type RecordedCounteraction = { path: string; reason: string; attempted: string; ref: string };
+type RecordedCounteraction = { path: string; reason: string; attempted: string; counteractionRef: string };
 
 /** Read the exact local work cohort and its native counteractions. */
 export function cohort(id: string, ref: string): Promise<RecordedCohort>;
@@ -6748,8 +6858,10 @@ type DevelopmentJournalEntry = {
 
 type DevelopmentObservation = {
   id: string; session: string; sessionState: string; contextEffect: string; snapshot: string;
+  /** state is current liveness; commitPoint proves retained recovery, unlike the proposed snapshot hash. */
   snapshotMatchesSession: boolean; planMatches: boolean; state: string; commitPoint: string;
   updatedAt: number; terminalAt: number | null; attention: string | null; primary: string | null;
+  /** Last execution phase reached; it can remain accepted while state is requires-repair. */
   phase: string | null; artifactDigest: string | null; instanceGeneration: string | null;
   cleanup: string[]; executionRoot: string | null; process: string | null; artifact: string | null;
   journal: DevelopmentJournalEntry[];
@@ -8362,14 +8474,6 @@ type CloseoutAttempt = { label: string; receipt: string };
 
 type CloseoutPair = { current: CloseoutAttempt; prior: CloseoutAttempt };
 
-type CloseoutEvidence = {
-  receipt: string;
-  testOutcome: "passed" | "failed" | "errored" | "timeout";
-  release: { decision: "confirmed" | "waiting" | "revise" | "unobserved"; finding: string; evidenceIds: string[] };
-  inventory: "clear" | "registered-residue" | "unregistered-residue" | "mixed-residue";
-  remainingIds: string[];
-};
-
 type CloseoutDecision = {
   status: "cleared" | "hold-test" | "hold-residue" | "hold-ack";
   currentRemaining: string[];
@@ -8379,19 +8483,11 @@ type CloseoutDecision = {
 
 type CloseoutReceipt = { path: string; sha256: string; bytes: number };
 
-type CloseoutReport = {
-  pair: CloseoutPair;
-  current: CloseoutEvidence;
-  prior: CloseoutEvidence;
-  decision: CloseoutDecision;
-  handoff: CloseoutReceipt | null;
-};
-
 /** Nominate the two owned Testkit closeout receipts and stage an authorized private review. */
 export function nominate(goal: string): Promise<CloseoutPair>;
 
 /** Nominate the two owned Testkit closeout receipts and stage an authorized private review. */
-export function stage(report: CloseoutReport):
+export function stage(decision: CloseoutDecision):
       Promise<CloseoutReceipt>;`,
   testkitCleanup: `/** Read the assigned live Testkit teardown receipt. */
 

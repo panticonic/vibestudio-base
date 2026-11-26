@@ -143,7 +143,7 @@ const authoredServices = [
   authoredService("nativeRetainedMemory", "Recall owned memory and read exact original conversation and file evidence.", "base", "open-retained-memory", [{ name: "brief", params: [] }, { name: "recall", params: ["query", "kinds"] }, { name: "transcript", params: ["channelId"] }, { name: "archivedFile", params: ["eventId"] }, { name: "workingFile", params: [] }]),
   authoredService("nativeMemoryHandoff", "Retain an authorized private memory review.", "base", "open-retained-memory", [{ name: "stage", params: ["brief", "plan", "evidence", "outcome"] }]),
   authoredService("nativeIntentDiscovery", "Search actual installed scope and read the exact native evidence that answers the user.", "base", "open-intent-discovery", [{ name: "notice", params: [] }, { name: "search", params: ["query"] }, { name: "describe", params: ["id"] }, { name: "inspect", params: ["methodId", "scope"] }]),
-  authoredService("nativeIntentHandoff", "Retain the expressly authorized private intent discovery result.", "base", "open-intent-discovery", [{ name: "stage", params: ["report"] }]),
+  authoredService("nativeIntentHandoff", "Retain the expressly authorized private intent discovery result.", "base", "open-intent-discovery", [{ name: "stage", params: ["outcome"] }]),
   authoredService("routeEvidenceRead", "Discover and verify exact authorized local route evidence.", "base", "open-route-authority", [{ name: "discover", params: [] }, { name: "inspect", params: ["routeId"] }]),
   authoredService("routeEvidenceHandoff", "Retain an explicitly authorized private evidence route assessment.", "base", "open-route-authority", [{ name: "stage", params: ["report"] }]),
   authoredService("launchStateRead", "Scope an owned panel launch state and read its independent native owner snapshot.", "base", "open-panel-launch-state", [{ name: "enumerate", params: [] }, { name: "read", params: ["panelId"] }, { name: "seal", params: ["panelId"] }, { name: "bind", params: ["panelId", "basis", "patch"] }]),
@@ -400,7 +400,7 @@ const authoredServices = [
   authoredService("remoteAccessRoute", "Select the caller-assigned workspace through the verified hub.", "system", "remote-access", [{ name: "select", params: ["priorReceipt"] }]),
   authoredService("remoteAccessVerify", "Verify the child identity on the caller-assigned route.", "system", "remote-access", [{ name: "verify", params: ["routeReceipt"] }]),
   authoredService("sessionReplay", "Read the assigned durable replay checkpoint.", "system-testing", "session-test-review", [{ name: "inspect", params: ["receipt"] }]),
-  authoredService("testkitCloseout", "Nominate the two owned Testkit closeout receipts and stage an authorized private review.", "base", "open-user-goal", [{ name: "nominate", params: ["goal"] }, { name: "stage", params: ["report"] }]),
+  authoredService("testkitCloseout", "Nominate the two owned Testkit closeout receipts and stage an authorized private review.", "base", "open-user-goal", [{ name: "nominate", params: ["goal"] }, { name: "stage", params: ["decision"] }]),
   authoredService("testkitCleanup", "Read the assigned live Testkit teardown receipt.", "system-testing", "session-test-review", [{ name: "inspect", params: ["receipt"] }]),
 ] as const;
 
