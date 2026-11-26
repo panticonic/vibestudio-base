@@ -75,7 +75,8 @@ function batchScoreItem(item, extra) {
     ...typeof item.reasoning === "string" && item.reasoning && Array.isArray(item.reasoning_ids) && item.reasoning_ids.length && sendReasoningIds() ? { reasoning_ids: [...item.reasoning_ids] } : {},
     ...item.adapters?.length ? { adapters: item.adapters } : {},
     ...item.native_state_modes ? { native_state_modes: item.native_state_modes } : {},
-    ...item.native_recording ? { native_recording: true } : {}
+    ...item.native_recording ? { native_recording: true } : {},
+    ...item.x_natlang_privileged_context !== void 0 ? { x_natlang_privileged_context: item.x_natlang_privileged_context } : {}
   };
 }
 function scoresFromBatchResult(result, item) {

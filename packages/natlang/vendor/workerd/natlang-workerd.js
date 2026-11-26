@@ -227542,6 +227542,22 @@ var init_selected_captures = __esm({
   }
 });
 
+// src/model/node-connection-policy.ts
+function modelConnectionAttemptTimeout(environment) {
+  const configured = environment.NATLANG_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS?.trim();
+  if (configured === "0") return void 0;
+  const milliseconds = configured ? Number(configured) : 1500;
+  if (!Number.isInteger(milliseconds) || milliseconds < 10 || milliseconds > 6e4)
+    throw new Error("NATLANG_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS must be 0 or an integer from 10 to 60000");
+  return milliseconds;
+}
+var init_node_connection_policy = __esm({
+  "src/model/node-connection-policy.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+  }
+});
+
 // src/model/native-xml-calls.ts
 function resolveRef(ref, root2) {
   if (typeof ref !== "string" || !ref.startsWith("#/")) throw new Error("unsupported schema reference");
@@ -227563,8 +227579,18 @@ function equal(a, b) {
   }
   return false;
 }
+function jsonValueType(value) {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "number") return Number.isSafeInteger(value) ? "integer" : "number";
+  if (typeof value === "string") return "string";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "object") return "object";
+  return void 0;
+}
 function types(schema, root2 = schema, depth2 = 0) {
   if (depth2 > 64) throw new Error("recursive schema reference");
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return void 0;
   if (schema.$ref !== void 0) {
     const target = resolveRef(schema.$ref, root2);
     if (typeof target === "object") return types(target, root2, depth2 + 1);
@@ -227572,6 +227598,14 @@ function types(schema, root2 = schema, depth2 = 0) {
   }
   if (typeof schema.type === "string") return [schema.type];
   if (Array.isArray(schema.type) && schema.type.every((x) => typeof x === "string")) return schema.type;
+  if ("const" in schema) {
+    const t = jsonValueType(schema.const);
+    if (t) return [t];
+  }
+  if (Array.isArray(schema.enum) && schema.enum.length) {
+    const inferred = [...new Set(schema.enum.map(jsonValueType).filter((t) => t !== void 0))];
+    if (inferred.length) return inferred;
+  }
   for (const name of ["anyOf", "oneOf"]) if (Array.isArray(schema[name])) {
     const parts = schema[name].map((part) => types(part, root2, depth2 + 1));
     return parts.some((x) => x === void 0) ? void 0 : [...new Set(parts.flat())];
@@ -227739,7 +227773,8 @@ function batchScoreItem(item, extra) {
     ...typeof item.reasoning === "string" && item.reasoning && Array.isArray(item.reasoning_ids) && item.reasoning_ids.length && sendReasoningIds() ? { reasoning_ids: [...item.reasoning_ids] } : {},
     ...item.adapters?.length ? { adapters: item.adapters } : {},
     ...item.native_state_modes ? { native_state_modes: item.native_state_modes } : {},
-    ...item.native_recording ? { native_recording: true } : {}
+    ...item.native_recording ? { native_recording: true } : {},
+    ...item.x_natlang_privileged_context !== void 0 ? { x_natlang_privileged_context: item.x_natlang_privileged_context } : {}
   };
 }
 function scoresFromBatchResult(result, item) {
@@ -227769,7 +227804,7 @@ var init_native_xml_policy = __esm({
   "src/model/native-xml-policy.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    NATIVE_XML_POLICY_SHA256 = "c93dc767e0bb16a415c022ea64b14e93f992f53d88750b5bdcc8dbcee765651f";
+    NATIVE_XML_POLICY_SHA256 = "1beb37e157e6de72b84c228ba335a01a694c18cb528b3702b0bfc3362a6012c2";
   }
 });
 
@@ -228170,15 +228205,15 @@ function chatCompletionModelTurn(transport, options = {}) {
         });
         const replyText2 = contentText(message2?.content);
         let parsedNative = false;
-        if (!calls.length && TOOL_MARKUP.test(replyText2)) {
-          if (responseTools && !truncated) {
+        if (TOOL_MARKUP.test(replyText2)) {
+          if (!calls.length && responseTools && !truncated) {
             try {
               calls.push(...parseNativeXmlCalls(replyText2, responseTools).map(([name, args]) => [reverse[name] ?? name, args]));
               parsedNative = true;
             } catch {
               throw new LeakedCall(leakedCallFeedback(replyText2, responseTools));
             }
-          } else throw new LeakedCall(leakedCallFeedback(replyText2, tools));
+          } else throw new LeakedCall(leakedCallFeedback(replyText2, responseTools ?? tools));
         }
         const written = calls.length ? void 0 : callWrittenAsText(replyText2, tools);
         if (written) calls.push([reverse[written[0]] ?? written[0], written[1]]);
@@ -228232,7 +228267,9 @@ function chatCompletionModelTurn(transport, options = {}) {
 async function fetchModel(url, init = {}) {
   for (const [base, handler] of localEndpoints) if (url === base || url.startsWith(base + "/")) return handler(url, init);
   if (typeof process !== "undefined" && process.versions?.node) {
-    longDispatcher ??= Promise.resolve().then(() => (init_undici(), undici_exports)).then(({ Agent: Agent2 }) => new Agent2({ headersTimeout: 0, bodyTimeout: 0 }), () => void 0);
+    longDispatcher ??= Promise.resolve().then(() => (init_undici(), undici_exports)).then(({ Agent: Agent2 }) => new Agent2({ headersTimeout: 0, bodyTimeout: 0, connect: {
+      ...modelConnectionAttemptTimeout(process.env) === void 0 ? {} : { autoSelectFamilyAttemptTimeout: modelConnectionAttemptTimeout(process.env) }
+    } }), () => void 0);
     const dispatcher = await longDispatcher;
     if (dispatcher) return fetch(url, { ...init, dispatcher });
   }
@@ -228323,6 +228360,7 @@ var init_chat_completion = __esm({
   "src/model/chat-completion.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    init_node_connection_policy();
     init_native_protocol();
     init_neuralese2();
     init_tool_markup();
@@ -229220,6 +229258,10 @@ function neuraleseServerModelTurn(options) {
     neuralese: true,
     artifacts: remote,
     decide: scoped2,
+    contextWindow: async () => {
+      const ctx = (await serverInfo())?.context;
+      return typeof ctx === "number" ? ctx : void 0;
+    },
     neuraleseRuntime: async () => (await Promise.resolve().then(() => (init_native_state_client(), native_state_client_exports))).nativeStateRuntimeOptions(
       { endpoint: http.endpoint, headers: http.headers, store: remote },
       { write: "available" }
@@ -229463,8 +229505,11 @@ function grammarCapture(options) {
       const end = reply.findIndex((token) => ends.has(token));
       let stop = end < 0 ? reply.length : end;
       let start = reply.slice(0, stop).lastIndexOf(thinkClose) + 1;
-      if (call.select !== void 0) [start, stop] = await selectedSpan(reply.slice(0, stop), call.select);
-      else if (!start && call.reply?.length && call.prompt?.at(-1) === thinkOpen)
+      if (call.select !== void 0) {
+        const from = selectInReasoning() ? 0 : start;
+        const [a, b] = await selectedSpan(reply.slice(from, stop), call.select);
+        [start, stop] = [from + a, from + b];
+      } else if (!start && call.reply?.length && call.prompt?.at(-1) === thinkOpen)
         throw new Error("neuralese-native-capture: the reply ended inside its reasoning: no content to capture");
       lead = reply.slice(0, start);
       span = reply.slice(start, stop);
@@ -229541,6 +229586,7 @@ function grammarWritePort(options) {
     }, { ...extra.type ? { type: extra.type } : {} });
   } };
 }
+var selectInReasoning;
 var init_native_operator = __esm({
   "src/model/native-operator.ts"() {
     "use strict";
@@ -229550,6 +229596,7 @@ var init_native_operator = __esm({
     init_chat_completion();
     init_neuralese_info();
     init_native_state_client();
+    selectInReasoning = () => typeof process !== "undefined" && (process.env.NATLANG_CAPTURE_SELECT_IN_REASONING ?? "").trim() === "1";
   }
 });
 
@@ -234720,6 +234767,8 @@ function contextOverflow(message2) {
     const window3 = /"n_ctx":(\d+)/.exec(message2);
     return { promptTokens: Number(llama[1]), window: window3 ? Number(window3[1]) : null };
   }
+  const native = /prompt uses (\d+) positions, context is (\d+)/.exec(message2);
+  if (native) return { promptTokens: Number(native[1]), window: Number(native[2]) };
   const window2 = /maximum context length is (\d+) tokens/.exec(message2);
   if (!window2) return void 0;
   const prompt = /prompt contains at least (\d+) input tokens/.exec(message2) ?? /\((\d+) in the messages/.exec(message2) ?? /request has (\d+) input tokens/.exec(message2);
@@ -237694,6 +237743,7 @@ ${notes}` : opening;
             consecutiveEmptyEosWithoutResult = 0;
             const elided = collapseHistory(messages, protectedLength);
             if (elided) pinNote(null);
+            compactedTurn = turns;
             compactedAt = estimate(allTools);
             session.runtime.trace.emit("compaction", {
               call_id: session.runtime.currentCallId ?? null,
