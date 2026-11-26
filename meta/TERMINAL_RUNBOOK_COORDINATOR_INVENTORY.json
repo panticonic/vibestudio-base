@@ -1,0 +1,91 @@
+{
+  "schema": "vibestudio.cross-skill-terminal-runbook-inventory/1",
+  "baseline": "5029c40eeb053a525f815e0ad5ea9fabdcbbab38",
+  "sources": [
+    {
+      "path": "skills/open-user-goal/workOnTerminalGoal.ts",
+      "sha256": "bbb2d5eb56b91e0b40d62a4579d2e74af3d4c4730ab056cc927efe677762ea71"
+    },
+    {
+      "path": "skills/open-user-goal/reconcileGoogleRunbook.ts",
+      "sha256": "6697602edd5fa8b3e327b2b6bab3d8de8140129e5bb681295be48ebd4e197db6"
+    },
+    {
+      "path": "skills/open-user-goal/workOnTerminalGoal/chooseTerminalAction.nl",
+      "sha256": "afa7a8d7bbb0bde873cac61d1d478193c1bac779f52fa76442183ad276d37559"
+    },
+    {
+      "path": "skills/open-user-goal/reconcileGoogleRunbook/reviseRunbook.nl",
+      "sha256": "19bb1e8402e7331e2fcbb563a9f684f75ee569bf6f17dff34367978f6a001f67"
+    },
+    {
+      "path": "skills/open-user-goal/natlang.json",
+      "sha256": "10f91fc36594e0ca7c5317ba82f4a0b6baea027be0170ea083d3374c1dc5f042"
+    },
+    {
+      "path": "skills/open-user-goal/entries.json",
+      "sha256": "44e2c4306fc4a690c90598cc8043c1709102ffbb909558c6d07590b3ca271c5d"
+    }
+  ],
+  "consumers": {
+    "roots": "entries.json/generated entriesGenerated; shared library; no external root callers found yet; complete search pending",
+    "terminal": "open-terminal-operator exact native session/input/lifecycle/handoff/discovery passthroughs; terminal/natlang check hierarchy; terminal-apps checklist continuity verification; SST terminal managed/worlds/discovery; existing Host terminal-handoff binder",
+    "runbook": "mounted actual Calendar workflow, workspace-document-revision, provenance-orientation; SST product-owned managed/worlds; Host source-claim-admission preserves dedicated write binding; read-only meaning review inventory pending"
+  },
+  "confirmed": [
+    "Terminal root fixes12turns and one-shot semantic acquisitions, while public Native grants contain no operation budget. Root becomes natural coordinator; actual Native authority/lifecycle retained.",
+    "GoogleRunbook root fixes all semantic review/attribution/continuation ordering in TS; existing mounted semantic codebases can be composed by natural root.",
+    "LocalReconciliation root is a typed receipt relay between existing natural roots; excluded deliberately, no renamed root merely for counts."
+  ],
+  "status": "ready, component-tested; no physical Native Hub qualification/meaning-review acceptance fabricated",
+  "validation": {
+    "publicComposition": {
+      "distinctPassed": 3,
+      "units": [
+        "vibe-terminal-findings-joint-20261126b",
+        "vibe-runbook-optional-attribution-joint-20261126c"
+      ],
+      "maxPeakGiB": 2.9,
+      "engines": "actual public ProgramLoader/Workerd evaluator with scripted gateway, exact Native callbacks; no provider"
+    },
+    "nativeComponents": {
+      "passed": 10,
+      "unit": "vibe-terminal-runbook-native-20261126i",
+      "peakMiB": 179.2,
+      "scope": "actual factory state/ownership/lifetime/ordering guards with injected PTY; actual memory-FS Runbook CAS/protected-write paths; Native docs/knowledge readback controls"
+    },
+    "hostBindings": {
+      "passed": 28,
+      "unit": "vibe-runbook-terminal-host-20261126d",
+      "scope": "actual generic admission + dedicated source-claim write bindings"
+    },
+    "declarations": {
+      "fresh": 380,
+      "unit": "vibe-terminal-runbook-declarations-20261126a"
+    },
+    "identity": {
+      "unit": "vibe-terminal-runbook-identity-20261126a",
+      "terminal": 38,
+      "runbook": 6,
+      "adjacentNewsUnchanged": 6,
+      "allOriginalFieldsUnchanged": true
+    },
+    "paidCalls": 0
+  },
+  "completed": [
+    "Both high-level roots now choose semantic coordination naturally across existing mounted codebases, preserving scoped exact Native effect boundaries.",
+    "Terminal public API is TerminalFindings {answer:string}; removed unused generic event/receipt/status report and projection helper without aliases. Native effect records stay authoritative.",
+    "Google attribution is honestly nullable when not requested/performed; actual Calendar and provenance hierarchies remain available.",
+    "Terminal explicit input/ordering remains a real goal obligation reviewed against completed Native journal and pre-teardown registry/process snapshot. Private reference sequence/count/disposition is not a teacher gate.",
+    "Native lifecycle cleanup always joins, including failed opening/reference and failed verification; original errors preserved with both failures retained if cleanup also fails.",
+    "Native discovery validates actually issued routes and all earlier loaded passages against current source, preserving full descriptions and canonical protocol delegation.",
+    "Runbook current-version/protected-source checks are applied before every real write, with stale CAS returning actual changed feedback. Private size/one-write limits removed.",
+    "Google query/hold mode receives mandatory native-bound review with no report copy inside Native observations; writable mode retains existing dedicated current document/edit-scope review."
+  ],
+  "unchecked": [
+    "All38 physical Hub/PTY Terminal factory references not rerun; tests inject exact Native PTY ports.",
+    "No live Calendar/provider or independent semantic admission review performed; raw failures unchanged.",
+    "Historical previously verified Terminal report-after-mutation captures still require bounded actual-answer audit before any completion reassessment.",
+    "Whole116-family coordinator census and remaining oracle inventory remain open beyond this completed batch."
+  ]
+}

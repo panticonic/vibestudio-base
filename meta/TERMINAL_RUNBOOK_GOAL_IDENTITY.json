@@ -1,0 +1,202 @@
+{
+  "schema": "vibestudio.terminal-runbook-goal-identity/1",
+  "baseline": "b359059e97101db105ebad80d930d1d1462fbd27",
+  "counts": {
+    "openTerminalWorlds": 38,
+    "openTerminalRequiresUnits": 9,
+    "googleRunbookWorlds": 6,
+    "newsEditionReviewWorlds": 6
+  },
+  "allOriginalFieldsUnchanged": true,
+  "addedMetadataOnly": "requestedReturnRequired",
+  "obligations": [
+    {
+      "id": "terminal-audit-prepared-versus-approved",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-pointer-accessibility-for-review",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-keyboard-revoke-with-rollback-retained",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-two-input-modalities-compare",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-compact-session-transfer",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-wide-and-back-without-forgetting",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-restart-durable-approved-state",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-recover-revocation-after-process-loss",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-intentional-quit-retained-record",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-shutdown-obsolete-context",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-ordered-approved-fallback-handoff",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-stage-readonly-discrepancy",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-manifest-literal-qualification",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-failed-threshold-dependent-hold",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-log-tail-completeness-blocker",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-timeout-separate-queue-health",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-record-exact-candidate-diagnostic",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-review-after-restarted-countersign",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-forensic-handoff-with-no-restart",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-restart-is-not-a-clean-exit",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-stale-note-has-no-restart-grant",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-conditional-clear-keeps-other-mark",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-held-post-exit-independent-check",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-held-recover-then-confirm-with-pointer",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-held-failed-release-needs-readonly-reattach",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-held-ordered-recovery-refuses-unneeded-toggle",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-discover-resume-after-clean-closeout",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-discover-restart-versus-running-resume",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-discover-user-registry-without-relaunch",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-discover-scratch-fs-without-shell",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-discover-deterministic-versus-agent-test",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-discover-meaning-of-final-retirement",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-discover-bound-script-for-byte-count",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-discover-approval-hold-with-signed-note",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-discover-outage-recovery-after-bound-gate",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "terminal-discover-held-native-failure-evidence-first",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-discover-held-clipboard-scratch-boundary",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "terminal-discover-held-substitute-no-pty-replacement",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "google-runbook-ramp-shift-brief",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "google-runbook-projector-unload",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "google-runbook-membership-onboarding",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "google-runbook-winter-kit-handoff",
+      "requestedReturnRequired": false
+    },
+    {
+      "id": "google-runbook-planting-shift-revised-event",
+      "requestedReturnRequired": true
+    },
+    {
+      "id": "google-runbook-flight-case-withdrawn",
+      "requestedReturnRequired": true
+    }
+  ],
+  "sources": [
+    {
+      "path": "skills/system-testing/open-goal-terminal-worlds.ts",
+      "beforeSha256": "0f4411ae91a41c88abb31d66be7b6c7e566a4a31e61c3d76b08023a27e2be16b",
+      "afterSha256": "e9aa4853aefde8d35d3dac8667ed10a7272e65b20e7deed21fab76534b7f70f4"
+    },
+    {
+      "path": "skills/system-testing/open-goal-product-owned-worlds.ts",
+      "beforeSha256": "f12527e76103a7027f5c474cebfa80db43a03f9c7512a735cf46f9232ae6aee3",
+      "afterSha256": "94f5a8aee3ec0e7da083f42c1812c084491d9580b5162757c7f13a0d29f633ef"
+    }
+  ]
+}

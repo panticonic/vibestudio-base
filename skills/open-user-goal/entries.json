@@ -590,7 +590,7 @@
     "additionalArguments": {}
   },
   "google-runbook": {
-    "program": "skills/open-user-goal/reconcileGoogleRunbook.ts",
+    "program": "skills/open-user-goal/reconcileGoogleRunbook.nl",
     "callable": "reconcileGoogleRunbook",
     "resultType": "GoogleRunbookResult",
     "skill": "googleRunbook",
@@ -720,9 +720,9 @@
     "additionalArguments": {}
   },
   "terminal-handoff": {
-    "program": "skills/open-user-goal/workOnTerminalGoal.ts",
+    "program": "skills/open-user-goal/workOnTerminalGoal.nl",
     "callable": "workOnTerminalGoal",
-    "resultType": "TerminalResult",
+    "resultType": "TerminalFindings",
     "skill": "terminalHandoff",
     "parameterNames": [
       "goal"
