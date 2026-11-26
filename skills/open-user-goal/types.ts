@@ -394,6 +394,7 @@ export type SystemCandidatePreview = {
   result: "compose" | "same-change" | "incoming-only" | "collision" | "absence" | "limited";
   composedDigest: string | null;
 };
+export type SystemCandidateEvidence = {frontier: SystemCandidateFrontier; preview: SystemCandidatePreview};
 export type SystemCandidateDecision = "carry-both" | "keep-converged" | "review-incoming" | "hold-collision" |
   "hold-absence" | "hold-preview" | "hold-stale";
 export type SystemCandidatePlan = { decision: SystemCandidateDecision; record: boolean; finding: string; proof: string[] };
