@@ -30,6 +30,8 @@ export interface SourceFileOptions {
   require?: (id: string) => unknown;
   /** Compiler paired with the execution realm; required where `new Function` is unavailable. */
   compileFunction?: CompileFunction;
+  /** Owner-scoped execution hook, shared with the entry and imported initializers. */
+  executeModule?: typeof execute;
   /** Resolve local-module free names through the same private guest global as the entry module. */
   confinement?: ExecuteOptions["confinement"];
   /** Freeze each local module's direct export namespace before publishing it through the module map. */
@@ -230,7 +232,11 @@ function normalizeDependencyRef(
 export async function findNearestPackageJson(
   sourcePath: string | undefined,
   loadSourceFile: LoadSourceFile | undefined
-): Promise<{ path: string; dir: string; packageJson: PackageJsonShape } | null> {
+): Promise<{
+  path: string;
+  dir: string;
+  packageJson: PackageJsonShape;
+} | null> {
   if (!sourcePath || !loadSourceFile) return null;
   let dir: string | null = dirname(sourcePath);
 
@@ -238,7 +244,11 @@ export async function findNearestPackageJson(
     const packagePath = normalizeSourcePath(`${dir}/package.json`);
     try {
       const raw = await loadSourceFile(packagePath);
-      return { path: packagePath, dir, packageJson: JSON.parse(raw) as PackageJsonShape };
+      return {
+        path: packagePath,
+        dir,
+        packageJson: JSON.parse(raw) as PackageJsonShape,
+      };
     } catch (error) {
       if (!isMissingSourceFileError(error)) throw error;
       dir = parentDir(dir);
@@ -259,7 +269,11 @@ async function findNearestTsConfig(
     const tsconfigPath = normalizeSourcePath(`${dir}/tsconfig.json`);
     try {
       const raw = await loadSourceFile(tsconfigPath);
-      return { path: tsconfigPath, dir, tsconfig: JSON.parse(raw) as TsConfigShape };
+      return {
+        path: tsconfigPath,
+        dir,
+        tsconfig: JSON.parse(raw) as TsConfigShape,
+      };
     } catch (error) {
       if (!isMissingSourceFileError(error)) throw error;
       dir = parentDir(dir);
@@ -567,7 +581,12 @@ async function loadLocalModules(
   ensureExternalRequires: EnsureExternalRequires,
   execution: Pick<
     SourceFileOptions,
-    "moduleMap" | "require" | "compileFunction" | "confinement" | "freezeModuleNamespace"
+    | "moduleMap"
+    | "require"
+    | "compileFunction"
+    | "confinement"
+    | "freezeModuleNamespace"
+    | "executeModule"
   >
 ): Promise<void> {
   const localModuleIds = new Set(files.keys());
@@ -604,9 +623,11 @@ async function loadLocalModules(
       const externalRequires = transformed.requires.filter(
         (specifier) => !localModuleIds.has(specifier)
       );
-      await ensureExternalRequires(externalRequires, { importerPath: normalized });
+      await ensureExternalRequires(externalRequires, {
+        importerPath: normalized,
+      });
 
-      const result = execute(transformed.code, {
+      const result = (execution.executeModule ?? execute)(transformed.code, {
         require: requireFn,
         compileFunction: execution.compileFunction,
         confinement: execution.confinement,
