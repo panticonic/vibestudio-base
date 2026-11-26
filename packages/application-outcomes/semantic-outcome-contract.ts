@@ -2,7 +2,7 @@ import {sha256HexSyncText} from "@vibestudio/content-addressing";
 /** Independent requirements of an authored task, separate from its execution trace. */
 export type SemanticOutcomeContract = {
   effects: { checks: readonly string[]; rationale: string };
-  returnedValue: { checks: readonly string[]; required: boolean; rationale: string };
+  returnedValue: { checks: readonly string[]; required: boolean; rationale: string; trainingEvidence?: "format-only" };
   incidentalValues?: { checks: readonly string[]; rationale: string };
 };
 
@@ -64,7 +64,7 @@ export function assessSemanticOutcome<T extends Verification>(
   contract?: SemanticOutcomeContract,
 ): T & { observedChecks: Record<string, boolean>; outcomeContract: SemanticOutcomeContract; outcomeDimensions: {
   effects: { passed: boolean; checks: Record<string, boolean> };
-  returnedValue: { required: boolean; passed: boolean; checks: Record<string, boolean>; incorrectReturns?: {definition:{name:string;source:string};required:boolean;valueJson:string;sha256:string;contribution?:unknown}[] };
+  returnedValue: { required: boolean; passed: boolean; checks: Record<string, boolean>; trainingEvidence?: "format-only"; unreviewedReturns?: {definition:{name:string;source:string};required:false;valueJson:string;sha256:string;trainingEvidence:"format-only";contribution?:unknown}[]; incorrectReturns?: {definition:{name:string;source:string};required:boolean;valueJson:string;sha256:string;contribution?:unknown}[] };
   incidentalValues?: { passed: boolean; checks: Record<string, boolean>; incorrectReturns: {definition:{name:string;source:string};required:boolean;valueJson:string;sha256:string;contribution?:unknown}[] };
 } } {
   // Existing application oracles remain strict until their authored contract
@@ -92,6 +92,8 @@ export function assessSemanticOutcome<T extends Verification>(
     const valueJson=item.valueJson??JSON.stringify(item.value);
     return {definition:item.definition,required:item.required!==false,valueJson,sha256:sha256HexSyncText(valueJson),...(item.contribution?{contribution:item.contribution}:{})};
   });
+  const unreviewedReturns=((verification.unreviewedReturnValues as {definition:{name:string;source:string};valueJson:string;contribution?:unknown}[]|undefined)??[]).map(item=>({...item,required:false as const,trainingEvidence:"format-only" as const,sha256:sha256HexSyncText(item.valueJson)}));
+  if(unreviewedReturns.length && (declared.returnedValue.required || declared.returnedValue.trainingEvidence!=="format-only"))throw new Error("An unreviewed return hold requires an explicitly optional format-only contract");
   return {
     ...verification,
     observedChecks,
@@ -101,6 +103,8 @@ export function assessSemanticOutcome<T extends Verification>(
     outcomeDimensions: {
       effects: { passed: effectsPassed, checks: effects },
       returnedValue: { required: declared.returnedValue.required, passed: returnPassed, checks: returnedValue,
+        ...(declared.returnedValue.trainingEvidence?{trainingEvidence:declared.returnedValue.trainingEvidence}:{}),
+        ...(unreviewedReturns.length?{unreviewedReturns}:{}),
         ...(!declared.incidentalValues&&incorrectReturns.length?{incorrectReturns}:{}) },
       ...(declared.incidentalValues ? {incidentalValues:{passed:Object.values(incidental).every(value=>value===true),checks:incidental,incorrectReturns}} : {}),
     },
