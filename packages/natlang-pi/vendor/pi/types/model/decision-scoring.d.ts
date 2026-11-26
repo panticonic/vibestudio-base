@@ -45,7 +45,9 @@ export declare function splitTokenization(): boolean;
  */
 export declare function sendReasoningIds(): boolean;
 /** One item of the explicit-batch endpoint's request: the prompt and its replies as continuations. */
-export declare function batchScoreItem(item: Pick<DecisionRequest, 'messages' | 'options'> & Partial<Pick<DecisionRequest, 'adapters' | 'native_state_modes' | 'native_recording' | 'cache_messages' | 'open_reply' | 'reasoning' | 'reasoning_ids'>>, extra?: Json): Json;
+export declare function batchScoreItem(item: Pick<DecisionRequest, 'messages' | 'options'> & Partial<Pick<DecisionRequest, 'adapters' | 'native_state_modes' | 'native_recording' | 'cache_messages' | 'open_reply' | 'reasoning' | 'reasoning_ids'>> & {
+    x_natlang_privileged_context?: Json;
+}, extra?: Json): Json;
 /** One result of the explicit-batch endpoint's response, for an item of `replyCount` replies. */
 export type BatchScoreResult = {
     log_probs?: number[];
