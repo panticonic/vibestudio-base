@@ -13,7 +13,7 @@
     "automationActivationReadback": [],
     "googleRunbook": [
       "reconcileGoogleRunbook/reviseRunbook.nl",
-      "reconcileGoogleRunbook.ts"
+      "reconcileGoogleRunbook/readRunbookBasis.ts"
     ],
     "newsEditionReview": [
       "prepareNewsEditionReview.ts"

@@ -591,7 +591,7 @@ export default {
     "additionalArguments": {}
   },
   "google-runbook": {
-    "program": "skills/open-user-goal/reconcileGoogleRunbook.ts",
+    "program": "skills/open-user-goal/reconcileGoogleRunbook.nl",
     "callable": "reconcileGoogleRunbook",
     "resultType": "GoogleRunbookResult",
     "skill": "googleRunbook",
@@ -721,9 +721,9 @@ export default {
     "additionalArguments": {}
   },
   "terminal-handoff": {
-    "program": "skills/open-user-goal/workOnTerminalGoal.ts",
+    "program": "skills/open-user-goal/workOnTerminalGoal.nl",
     "callable": "workOnTerminalGoal",
-    "resultType": "TerminalResult",
+    "resultType": "TerminalFindings",
     "skill": "terminalHandoff",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"44e2c4306fc4a690c90598cc8043c1709102ffbb909558c6d07590b3ca271c5d"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"d30be4e26de662fe768f3d30497b72725f7f7071b91a357cc9cf7b4017044a10"};
