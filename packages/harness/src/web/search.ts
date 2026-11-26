@@ -1,3 +1,4 @@
+import { isRpcAborted } from "@vibestudio/rpc";
 import { Type } from "@panticonic/pi-ai";
 import type { JsonRepresentation } from "@panticonic/pi-chord";
 import type {
@@ -241,6 +242,7 @@ async function runCodexSearch(
         partialResults[index] = normalizeCodexResult(result);
       } catch (error) {
         if (options.signal?.aborted) throw options.signal.reason ?? error;
+        if (isRpcAborted(error)) throw error;
         partialResults[index] = failedQuery(query, error);
       } finally {
         completedQueryCount += 1;

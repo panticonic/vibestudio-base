@@ -1,0 +1,5 @@
+# Published-default web cancellation closure
+
+This minimal successor of actual default e4a56c7e preserves its old Harness-owned web provider implementation. It has no web-core package and no runtime/shared/web binding. Its standard search already propagates provider failures directly (search.ts runStandardSearch), so only the Agent credential-presence catch requires correction. The canonical RPC_ABORTED error propagates unchanged; ordinary unavailable credential resolution still produces false. The shared helper is exported through the already-admitted Harness standard-tools dependency. No private corpus, SDK, or profile source is imported.
+
+Actual 3 helper/subscription controls PASS (225.1MiB), with TEST-only scripted local adapter, no remote/model requests. Current architecture separately passed29 provider/runtime/search and4 native-vessel Agent controls. The subscription-search partial-result catch also preserves RPC_ABORTED unchanged; ordinary provider errors remain partial results. This is not a correction for the external DuckDuckGo bot refusal; those five original errors remain.

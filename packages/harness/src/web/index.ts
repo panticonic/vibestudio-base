@@ -493,3 +493,5 @@ function clampInt(
 }
 export type { SearchResult, ProviderName } from "./types.js";
 export type { CredentialPresenceProbe } from "./provider.js";
+
+export { createCredentialPresenceProbe } from "./provider.js";

@@ -1,3 +1,4 @@
+import { isRpcAborted } from "@vibestudio/rpc";
 import type { ProviderName } from "./types.js";
 
 /**
@@ -39,4 +40,13 @@ export async function selectSearchProvider(
   if (await probe(SEARCH_PROVIDER_ORIGINS.brave)) return "brave";
   if (await probe(SEARCH_PROVIDER_ORIGINS.exa)) return "exa";
   return "duckduckgo";
+}
+
+
+/** Credential absence is ordinary unavailability; caller cancellation is terminal. */
+export function createCredentialPresenceProbe(resolve: (origin: string) => Promise<unknown>): CredentialPresenceProbe {
+  return async (origin) => {
+    try { return await resolve(origin) != null; }
+    catch (error) { if (isRpcAborted(error)) throw error; return false; }
+  };
 }
