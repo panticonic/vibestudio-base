@@ -1,10 +1,8 @@
 ---
-description: Read the native current delta and the file coordinate required by the goal.
+description: Identify and inspect the actual current file evidence needed for the requested candidate review.
 args:
   goal: string
   card: SystemCandidateCard
-returns: { frontier: SystemCandidateFrontier; preview: SystemCandidatePreview }
+returns: SystemCandidateEvidence | null
 ---
-1. Call readDeltaFrontier with the actual card id and workingEvent.
-2. Select the coordinate matching the exact file the user asked about; the card.usual names the designated unit file. Compare sibling coordinates but preview only the designated coordinate.
-3. Call readFileTriplet with the exact card id, working event and selected coordinate id. Return its preview and the actual frontier.
+Inspect the owned native frontier and determine which of its real coordinates answers this goal. The coordinate interpretation function can help distinguish similarly named files and the designated current candidate. Read actual triplet evidence for a supported selected coordinate and return that frontier and preview together. Do not invent a coordinate, substitute a different file’s bytes or claim that a missing/binary/oversized side was read as text. If the actual frontier cannot identify the requested evidence, return null so the caller can preserve that uncertainty rather than manufacture a comparison.

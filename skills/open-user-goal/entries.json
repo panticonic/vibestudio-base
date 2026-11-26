@@ -140,7 +140,7 @@
     "additionalArguments": {}
   },
   "scaffoldReview": {
-    "program": "skills/open-user-goal/prepareOwnedScaffold.ts",
+    "program": "skills/open-user-goal/prepareOwnedScaffold.nl",
     "callable": "prepareOwnedScaffold",
     "resultType": "ScaffoldOutcome",
     "skill": "scaffoldReview",
@@ -160,7 +160,7 @@
     "additionalArguments": {}
   },
   "systemCandidateTriage": {
-    "program": "skills/open-user-goal/triageSystemTemplate.ts",
+    "program": "skills/open-user-goal/triageSystemTemplate.nl",
     "callable": "triageSystemTemplate",
     "resultType": "SystemCandidateOutcome",
     "skill": "systemCandidateTriage",
@@ -230,7 +230,7 @@
     "additionalArguments": {}
   },
   "grimoireScene": {
-    "program": "skills/open-user-goal/careForGrimoireScene.ts",
+    "program": "skills/open-user-goal/careForGrimoireScene.nl",
     "callable": "careForGrimoireScene",
     "resultType": "GrimoireSceneOutcome",
     "skill": "grimoireScene",

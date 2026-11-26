@@ -141,7 +141,7 @@ export default {
     "additionalArguments": {}
   },
   "scaffoldReview": {
-    "program": "skills/open-user-goal/prepareOwnedScaffold.ts",
+    "program": "skills/open-user-goal/prepareOwnedScaffold.nl",
     "callable": "prepareOwnedScaffold",
     "resultType": "ScaffoldOutcome",
     "skill": "scaffoldReview",
@@ -161,7 +161,7 @@ export default {
     "additionalArguments": {}
   },
   "systemCandidateTriage": {
-    "program": "skills/open-user-goal/triageSystemTemplate.ts",
+    "program": "skills/open-user-goal/triageSystemTemplate.nl",
     "callable": "triageSystemTemplate",
     "resultType": "SystemCandidateOutcome",
     "skill": "systemCandidateTriage",
@@ -231,7 +231,7 @@ export default {
     "additionalArguments": {}
   },
   "grimoireScene": {
-    "program": "skills/open-user-goal/careForGrimoireScene.ts",
+    "program": "skills/open-user-goal/careForGrimoireScene.nl",
     "callable": "careForGrimoireScene",
     "resultType": "GrimoireSceneOutcome",
     "skill": "grimoireScene",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"cd36b8b613b9feaee55f15689f69565bd2d82355024c807551eb34422f4e8d4e"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6b348990a5a997552203022cb3de3aed215a9f719f453f7eb3184b6b848aaefe"};
