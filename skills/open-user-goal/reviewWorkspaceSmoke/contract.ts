@@ -3,7 +3,7 @@ export type SmokePlan = { path: string; digest: string; context: string; revisio
   probe: string; input: unknown; accepted: unknown };
 export type SmokeSource = { matches: number; truncated: boolean; plans: SmokePlan[] };
 export type SmokeSelection = { plan: SmokePlan | null; blocker: "hold-source" | "hold-ambiguity" | null };
-export type SmokeRuntime = { packageName: string; exportName: string; callable: boolean; value: unknown; runDigest: string };
-export type SmokeDecision = { disposition: "accepted" | "regression" | "hold-source" | "hold-ambiguity" | "hold-export"; mayRetain: boolean };
+export type SmokeRuntime = { packageName: string; exportName: string; callable: boolean; value: unknown; matchesAccepted:boolean; runDigest: string };
 export type SmokeReceipt = { path: string; bytes: number; sha256: string };
-export type WorkspaceSmokeReport = { decision: SmokeDecision; receipt: SmokeReceipt | null };
+export type WorkspaceSmokeFinding = string;
+export type SmokeInvestigation = {source:SmokeSource;selection:SmokeSelection;runtime:SmokeRuntime|null;finding:string};

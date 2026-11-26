@@ -31,9 +31,9 @@ export default {
     "additionalArguments": {}
   },
   "delivery-wake": {
-    "program": "skills/open-user-goal/reviewDeliveryWake.ts",
+    "program": "skills/open-user-goal/reviewDeliveryWake.nl",
     "callable": "reviewDeliveryWake",
-    "resultType": "DeliveryWakeReport",
+    "resultType": "DeliveryWakeFinding",
     "skill": "deliveryWake",
     "parameterNames": [
       "goal"
@@ -471,9 +471,9 @@ export default {
     "additionalArguments": {}
   },
   "workspace-smoke": {
-    "program": "skills/open-user-goal/reviewWorkspaceSmoke.ts",
+    "program": "skills/open-user-goal/reviewWorkspaceSmoke.nl",
     "callable": "reviewWorkspaceSmoke",
-    "resultType": "WorkspaceSmokeReport",
+    "resultType": "WorkspaceSmokeFinding",
     "skill": "workspaceSmoke",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"41901e566be9e23ef3889229fca3296212c48c6babb80c6d4bf596bcc45e48b3"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"707f22f422959d7dec5b87ff39315871fd56cb7bf25697b3dae79dd922c56834"};
