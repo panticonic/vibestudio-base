@@ -65,6 +65,7 @@ export interface SandboxImportLoader {
 export type LibraryModuleArtifact = BuildBundleResult;
 
 export type SandboxFailureKind = "user-code" | "infrastructure" | "cancelled";
+export const EVAL_EXECUTION_BUDGET_VERSION = 1;
 
 export interface SandboxOptions {
   /** Host-owned native operation evidence; never exposed in guest bindings. */
@@ -82,6 +83,15 @@ export interface SandboxOptions {
    * recovery; this field bounds authored loops and recursion in-process.
    */
   deadline?: { atMs: number; timeoutMs: number };
+  /** Opt-in evaluated-source wall budget, including asynchronous settlement.
+   * Starts at the first untrusted initializer or entry invocation, after its
+   * initial preparation/compilation. Later guest-requested loading is included.
+   * Native/non-cooperative code still needs the host's whole-run watchdog. */
+  executionTimeoutMs?: number;
+  /** Bounded host diagnostics only; never exposed as an authored binding. */
+  onPhase?: (phase: "prepare" | "compile" | "execute" | "await" | "settle" | "complete") => void;
+  /** Abort the exact enclosing run's native operations when its guest budget expires. */
+  onExecutionTimeout?: (reason: Error) => void;
   /** Packages to build and load before execution.
    *  - Workspace packages: value is "latest" or a git ref (branch/tag/SHA)
    *  - npm packages: value is "npm:<version>" (e.g. "npm:^4.17.21", "npm:latest")
@@ -305,6 +315,8 @@ function getModuleMap(override?: Record<string, unknown>): Record<string, unknow
 }
 
 interface LoadedLibraryMetadata {
+  /** Imported functions retain their checkpoint closure; an explicit new budget cannot borrow it. */
+  execution?: typeof execute;
   bundle: string;
   ref: string;
 }
@@ -321,6 +333,21 @@ function loadedLibraryMetadata(
   specifier: string
 ): LoadedLibraryMetadata | undefined {
   return loadedLibraries.get(moduleMap)?.get(specifier);
+}
+
+function assertLibraryExecutionBudget(
+  moduleMap: Record<string, unknown>,
+  specifier: string,
+  execution: typeof execute
+): void {
+  const library = loadedLibraryMetadata(moduleMap, specifier);
+  if (execution !== execute && library && library.execution !== execution)
+    throw new SandboxInfrastructureError(
+      "execution_budget_cached_module_unsupported",
+      new Error(
+        `An explicit execution budget cannot reuse retained library ${specifier} from another invocation; use a fresh module registry`
+      )
+    );
 }
 
 function importRefKey(ref: string | undefined): string {
@@ -340,10 +367,12 @@ async function loadLibraryBundle(
   freezeModuleNamespace?: <T>(value: T) => T,
   loadImport?: SandboxImportLoader,
   confinement?: "private-global",
-  ref?: string
+  ref?: string,
+  executeModule: typeof execute = execute
 ): Promise<void> {
   const refKey = importRefKey(ref);
   const existing = loadedLibraryMetadata(moduleMap, specifier);
+  assertLibraryExecutionBudget(moduleMap, specifier, executeModule);
   if (existing?.bundle === artifact.bundle && Object.hasOwn(moduleMap, specifier)) {
     // Two refs may resolve to byte-identical artifacts. The acquired artifact
     // is already active, but remember the newly requested ref so future calls
@@ -406,12 +435,13 @@ async function loadLibraryBundle(
         resolvedRequire,
         compileFunction,
         freezeModuleNamespace,
-        confinement
+        confinement,
+        executeModule
       );
       return resolvedRequire(dependency);
     }
   };
-  const result = execute(body, {
+  const result = executeModule(body, {
     require: resolvedRequire,
     compileFunction,
     confinement,
@@ -426,7 +456,7 @@ async function loadLibraryBundle(
     registry = new Map();
     loadedLibraries.set(moduleMap, registry);
   }
-  registry.set(specifier, { bundle: artifact.bundle, ref: refKey });
+  registry.set(specifier, { bundle: artifact.bundle, ref: refKey, execution: executeModule });
 }
 
 /**
@@ -439,12 +469,14 @@ async function loadImports(
   requireFn?: (id: string) => unknown,
   compileFunction?: CompileFunction,
   freezeModuleNamespace?: <T>(value: T) => T,
-  confinement?: "private-global"
+  confinement?: "private-global",
+  executeModule: typeof execute = execute
 ): Promise<void> {
   const moduleMap = getModuleMap(moduleMapOverride);
   for (const [specifier, refValue] of Object.entries(imports)) {
     const ref = refValue === "latest" ? undefined : refValue;
     const existing = loadedLibraryMetadata(moduleMap, specifier);
+    assertLibraryExecutionBudget(moduleMap, specifier, executeModule);
     const workspaceUnit = await loadImport.resolveWorkspaceUnit?.(specifier);
     if (workspaceUnit?.isRoot && !existing) {
       const preloaded = [workspaceUnit.name, workspaceUnit.relativePath]
@@ -494,7 +526,8 @@ async function loadImports(
       freezeModuleNamespace,
       loadImport,
       confinement,
-      ref
+      ref,
+      executeModule
     );
   }
 }
@@ -603,7 +636,8 @@ function installLazyImportLoader(
   loadImport: SandboxOptions["loadImport"] | undefined,
   moduleMapOverride?: Record<string, unknown>,
   requireFn?: (id: string) => unknown,
-  compileFunction?: CompileFunction
+  compileFunction?: CompileFunction,
+  executeModule: typeof execute = execute
 ): (() => void) | null {
   if (!loadImport) return null;
   const globals = globalThis as Record<string, unknown>;
@@ -619,6 +653,7 @@ function installLazyImportLoader(
     const moduleMap = getModuleMap(moduleMapOverride);
     const ref = refValue === "latest" ? undefined : refValue;
     const existing = loadedLibraryMetadata(moduleMap, specifier);
+    assertLibraryExecutionBudget(moduleMap, specifier, executeModule);
     if (Object.hasOwn(moduleMap, specifier) && (!existing || existing.ref === importRefKey(ref))) {
       return moduleMap[specifier];
     }
@@ -634,7 +669,8 @@ function installLazyImportLoader(
       undefined,
       loadImport,
       undefined,
-      ref
+      ref,
+      executeModule
     );
     return moduleMap[specifier];
   };
@@ -691,10 +727,18 @@ async function ensureRequires(
     compileFunction?: CompileFunction;
     freezeModuleNamespace?: <T>(value: T) => T;
     confinement?: "private-global";
+    executeModule?: typeof execute;
   } = {},
   context?: ExternalRequireContext
 ): Promise<void> {
   if (requires.length === 0) return;
+  if (options.executeModule)
+    for (const specifier of requires)
+      assertLibraryExecutionBudget(
+        getModuleMap(options.moduleMap),
+        specifier,
+        options.executeModule
+      );
   const requireFn = options.require ?? getDefaultRequire();
   if (!requireFn) throw new Error("__vibestudioRequire__ not available. Build may be outdated.");
 
@@ -716,7 +760,8 @@ async function ensureRequires(
         options.require,
         options.compileFunction,
         options.freezeModuleNamespace,
-        options.confinement
+        options.confinement,
+        options.executeModule
       );
       validation = validateRequires(requires, requireFn);
     }
@@ -1449,7 +1494,14 @@ function throwIfAborted(signal?: AbortSignal): void {
 
 function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(createAbortError(signal));
+  if (signal.aborted) {
+    // The owned operation may already have rejected synchronously (for example
+    // an instrumented loop in an async wrapper). Observe its terminal even
+    // when cancellation is already authoritative; never leave a detached
+    // rejection, and never wait for a non-settling operation to report abort.
+    void promise.catch(() => undefined);
+    return Promise.reject(createAbortError(signal));
+  }
 
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => {
@@ -1492,15 +1544,94 @@ export async function executeSandbox(
   options: SandboxOptions = {}
 ): Promise<SandboxResult> {
   const { syntax = "tsx", bindings = {} } = options;
-  const { signal } = options;
+  const executionAbort = options.executionTimeoutMs === undefined ? null : new AbortController();
+  const signal = executionAbort
+    ? options.signal
+      ? AbortSignal.any([options.signal, executionAbort.signal])
+      : executionAbort.signal
+    : options.signal;
+  let executionTimer: ReturnType<typeof setTimeout> | null = null;
+  let executionDeadlineAt: number | null = null;
+  const now = Date.now.bind(Date);
+  let executionPhase: Parameters<NonNullable<SandboxOptions["onPhase"]>>[0] = "prepare";
+  const phase = (value: typeof executionPhase) => {
+    executionPhase = value;
+    options.onPhase?.(value);
+  };
+  const executionTimeout = () =>
+    Object.assign(new Error(`eval execution timed out after ${options.executionTimeoutMs}ms`), {
+      name: "EvalExecutionDeadlineExceeded",
+      errorKind: "application",
+      code: "eval_execution_deadline_exceeded",
+      errorData: {
+        phase: executionPhase,
+        timeoutMs: options.executionTimeoutMs,
+      },
+    });
+  const abortExecution = () => {
+    if (executionAbort!.signal.aborted) return executionAbort!.signal.reason as Error;
+    const reason = executionTimeout();
+    executionAbort!.abort(reason);
+    try {
+      options.onExecutionTimeout?.(reason);
+    } catch (cause) {
+      Object.defineProperty(reason, "cause", { value: cause });
+    }
+    return reason;
+  };
+  let checkDeadline: (() => void) | undefined;
   let deactivateDeadline: (() => void) | null = null;
   let runtimeJournal: any | null = null;
+  let executionActive = true;
+  const checkExecutionBudget = () => {
+    if (!executionActive) return;
+    if (options.deadline && now() >= options.deadline.atMs)
+      throw new Error(`eval timed out after ${options.deadline.timeoutMs}ms`);
+    if (executionDeadlineAt !== null && now() >= executionDeadlineAt) throw abortExecution();
+  };
+  const beginExecution = () => {
+    throwIfAborted(signal);
+    checkExecutionBudget();
+    phase("execute");
+    // Initializers and the entry share one owner and one elapsed execution
+    // budget. Later guest-requested imports do not reset or pause that clock.
+    if (executionAbort && executionDeadlineAt === null) {
+      executionDeadlineAt = now() + options.executionTimeoutMs!;
+      executionTimer = setTimeout(abortExecution, options.executionTimeoutMs!);
+      executionTimer.unref?.();
+    }
+  };
+  const executeModule: typeof execute = executionAbort
+    ? (body, executionOptions = {}) => {
+        const instrumented = instrumentDeadlineCheckpoints(body);
+        phase("compile");
+        return execute(instrumented.code, {
+          ...executionOptions,
+          bindings: {
+            ...executionOptions.bindings,
+            [instrumented.checkpointName]: checkExecutionBudget,
+          },
+          beforeExecute: () => {
+            executionOptions.beforeExecute?.();
+            beginExecution();
+          },
+        });
+      }
+    : execute;
 
   // Per-execution module registry + require. When the caller passes a `moduleMap`/`require`
   // (e.g. multi-tenant EvalDO, one map per owner), module state is isolated to that map.
   // Otherwise fall back to the per-isolate globals for byte-identical panel behavior.
   const moduleMap = options.moduleMap ?? getModuleMap();
-  const requireFn = options.require ?? getDefaultRequire();
+  const rawRequire = options.require ?? getDefaultRequire();
+  const requireFn =
+    rawRequire &&
+    (executionAbort
+      ? (id: string) => {
+          assertLibraryExecutionBudget(moduleMap, id, executeModule);
+          return rawRequire(id);
+        }
+      : rawRequire);
 
   const tracking = getAsyncTracking();
   const trackingContext = tracking?.start();
@@ -1525,6 +1656,12 @@ export async function executeSandbox(
   });
 
   try {
+    if (
+      options.executionTimeoutMs !== undefined &&
+      (!Number.isSafeInteger(options.executionTimeoutMs) || options.executionTimeoutMs <= 0)
+    )
+      throw new Error("executionTimeoutMs must be a positive safe integer");
+    phase("prepare");
     throwIfAborted(signal);
     let normalizedCode = normalizeAgentEvalCode(code);
     // (#1) Fail loudly if pre-injected globals are imported from the runtime.
@@ -1550,7 +1687,8 @@ export async function executeSandbox(
         options.loadImport,
         moduleMap,
         requireFn,
-        options.compileFunction
+        options.compileFunction,
+        executeModule
       );
     }
 
@@ -1566,6 +1704,7 @@ export async function executeSandbox(
             moduleMap,
             require: requireFn,
             compileFunction: options.compileFunction,
+            executeModule,
             confinement: options.confinement,
             freezeModuleNamespace: options.freezeModuleNamespace,
           },
@@ -1580,6 +1719,7 @@ export async function executeSandbox(
                 moduleMap,
                 require: requireFn,
                 compileFunction: options.compileFunction,
+                executeModule,
                 freezeModuleNamespace: options.freezeModuleNamespace,
                 confinement: options.confinement,
               },
@@ -1629,29 +1769,35 @@ export async function executeSandbox(
           requireFn,
           options.compileFunction,
           options.freezeModuleNamespace,
-          options.confinement
+          options.confinement,
+          executeModule
         ),
         signal
       );
     }
     throwIfAborted(signal);
     const completionAwareCode = returnTrailingExpression(transformed.code);
-    const deadlineInstrumented = options.deadline
-      ? instrumentDeadlineCheckpoints(completionAwareCode)
-      : null;
+    const deadlineInstrumented =
+      options.deadline || executionAbort
+        ? instrumentDeadlineCheckpoints(completionAwareCode)
+        : null;
     const executableCode = deadlineInstrumented?.code ?? completionAwareCode;
     let executionBindings = bindings;
-    if (deadlineInstrumented && options.deadline) {
-      const now = Date.now.bind(Date);
+    if (deadlineInstrumented) {
       let active = true;
-      const { atMs, timeoutMs } = options.deadline;
       const checkpoint = () => {
-        if (active && now() >= atMs) throw new Error(`eval timed out after ${timeoutMs}ms`);
+        if (!active) return;
+        if (options.deadline && now() >= options.deadline.atMs)
+          throw new Error(`eval timed out after ${options.deadline.timeoutMs}ms`);
+        if (executionDeadlineAt !== null && now() >= executionDeadlineAt) {
+          throw abortExecution();
+        }
       };
       executionBindings = {
         ...bindings,
         [deadlineInstrumented.checkpointName]: checkpoint,
       };
+      checkDeadline = checkpoint;
       deactivateDeadline = () => {
         active = false;
       };
@@ -1670,6 +1816,9 @@ export async function executeSandbox(
       };
     }
 
+    if (executionAbort)
+      for (const specifier of transformed.requires)
+        assertLibraryExecutionBudget(moduleMap, specifier, executeModule);
     let validation = validateRequires(transformed.requires, requireFn);
     if (!validation.valid && options.loadImport) {
       throwIfAborted(signal);
@@ -1694,7 +1843,8 @@ export async function executeSandbox(
             requireFn,
             options.compileFunction,
             options.freezeModuleNamespace,
-            options.confinement
+            options.confinement,
+            executeModule
           ),
           signal
         );
@@ -1771,12 +1921,14 @@ export async function executeSandbox(
       const wrapped = wrapForTopLevelAwait(executableCode);
       let result: ReturnType<typeof execute>;
       try {
+        phase("compile");
         result = execute(wrapped, {
           console: capture.proxy,
           bindings: executionBindings,
           require: requireFn,
           compileFunction: options.compileFunction,
           confinement: options.confinement,
+          beforeExecute: beginExecution,
         });
       } finally {
         tracking?.exit();
@@ -1788,13 +1940,15 @@ export async function executeSandbox(
       // Successful runs still drain all tracked work below. No wall-clock limit
       // is imposed; pending primary work finishes only by completion, error, or
       // explicit user interruption.
-      throwIfAborted(signal);
       let returnValue = result.returnValue;
       if (isPromise(returnValue)) {
+        phase("await");
         returnValue = await withAbort(returnValue, signal);
       }
+      checkDeadline?.();
       throwIfAborted(signal);
       if (tracking && trackingContext) {
+        phase("settle");
         await withAbort(tracking.waitAll(trackingContext), signal);
       }
       throwIfAborted(signal);
@@ -1810,7 +1964,12 @@ export async function executeSandbox(
       journal && !options.operationJournal
         ? await runtimeModule.journal.with(journal, runUserCode)
         : await runUserCode();
+    checkDeadline?.();
     throwIfAborted(signal);
+    if (executionTimer !== null) clearTimeout(executionTimer);
+    executionTimer = null;
+    executionDeadlineAt = null;
+    phase("complete");
     let operationJournalFooter: string | undefined;
     if (journal) {
       try {
@@ -1862,6 +2021,8 @@ export async function executeSandbox(
       ...(runtimeJournal ? { operationJournal: captureOperationJournal(runtimeJournal) } : {}),
     };
   } finally {
+    if (executionTimer !== null) clearTimeout(executionTimer);
+    executionActive = false;
     deactivateDeadline?.();
     restoreLazyImportLoader?.();
     unsubscribe();

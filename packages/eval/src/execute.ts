@@ -58,6 +58,8 @@ export interface ExecuteOptions {
   compileFunction?: CompileFunction;
   /** Resolve every free identifier against a private allowlisted guest global. */
   confinement?: "private-global";
+  /** Host-owned hook after explicit compilation/confinement setup, before guest invocation. */
+  beforeExecute?: () => void;
 }
 
 export interface ExecuteResult {
@@ -256,15 +258,16 @@ export function execute(code: string, options: ExecuteOptions = {}): ExecuteResu
     // `scope` claims every identifier, including names used by this kernel.
     // Carry invocation values through the sloppy outer function's receiver;
     // the strict guest function has `this === undefined` and cannot observe it.
-    returnValue = runConfined.call(
-      { receiver },
-      createPrivateGuestGlobal(guestRealmOf(compileFunction), bindings)
-    );
+    const guestGlobal = createPrivateGuestGlobal(guestRealmOf(compileFunction), bindings);
+    options.beforeExecute?.();
+    returnValue = runConfined.call({ receiver }, guestGlobal);
   } else {
-    returnValue = compileFunction(
+    const run = compileFunction(
       ["require", "exports", "module", "console", ...scopeNames],
       `"use strict";\n${code}`
-    )(...receiver);
+    );
+    options.beforeExecute?.();
+    returnValue = run(...receiver);
   }
 
   return {
