@@ -261,7 +261,7 @@ export default {
     "additionalArguments": {}
   },
   "demo-portfolio": {
-    "program": "skills/open-user-goal/workOnDemoPortfolio.ts",
+    "program": "skills/open-user-goal/workOnDemoPortfolio.nl",
     "callable": "workOnDemoPortfolio",
     "resultType": "PortfolioResult",
     "skill": "demoPortfolio",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"c10c91f731b7341d3c7ea32c02616cd4c64a61054bb121099385a7d6d4fd8ed0"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"68b1fb6fd9510749b38d3c248fd9c89065a0cd81f1944f82646413ac9fb79766"};

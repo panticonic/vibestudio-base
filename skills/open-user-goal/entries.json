@@ -260,7 +260,7 @@
     "additionalArguments": {}
   },
   "demo-portfolio": {
-    "program": "skills/open-user-goal/workOnDemoPortfolio.ts",
+    "program": "skills/open-user-goal/workOnDemoPortfolio.nl",
     "callable": "workOnDemoPortfolio",
     "resultType": "PortfolioResult",
     "skill": "demoPortfolio",

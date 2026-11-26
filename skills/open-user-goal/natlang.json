@@ -238,8 +238,9 @@
     "workOnDemoPortfolio": {
       "mounts": [
         "workOnDemoPortfolio/portfolio",
-        "workOnDemoPortfolio/reviewPortfolioGarden/reviewer",
-        "workOnDemoPortfolio/reviewPortfolioRealm/reviewer"
+        "workOnDemoPortfolio/investigatePortfolio/portfolio",
+        "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioGarden/reviewer",
+        "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioRealm/reviewer"
       ],
       "types": [
         "PortfolioReport",
@@ -531,8 +532,6 @@
     "reviseWorkspaceDocument/policy": "skills/workspace-document-revision",
     "planPhoneFirstRun/phoneSetup": "skills/phone-setup/natlang",
     "workOnDemoPortfolio/portfolio": "skills/open-demo-portfolio",
-    "workOnDemoPortfolio/reviewPortfolioGarden/reviewer": "skills/examples-review",
-    "workOnDemoPortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review",
     "workOnRegencyBriefing/realm": "skills/open-regency-briefing",
     "workOnRegencyBriefing/qualifyRegencyClaim/reviewer": "skills/examples-review",
     "maintainWorkspaceSkill/authoring": "skills/natlang-authoring",
@@ -609,6 +608,9 @@
     "correctVaultFromPdf/pdf": "skills/pdf-intake",
     "correctVaultFromPdf/vault": "skills/spectrolite-review",
     "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/workspace": "skills/open-specialist-handoff",
-    "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/inspectSpecialistPresence/agents": "skills/agents/channel-membership"
+    "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/inspectSpecialistPresence/agents": "skills/agents/channel-membership",
+    "workOnDemoPortfolio/investigatePortfolio/portfolio": "skills/open-demo-portfolio",
+    "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioGarden/reviewer": "skills/examples-review",
+    "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review"
   }
 }
