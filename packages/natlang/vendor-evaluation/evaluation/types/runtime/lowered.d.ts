@@ -57,6 +57,8 @@ export type InlineInstructionOrigin = {
     };
 };
 export type CaptureAccessors = Record<string, readonly [() => unknown, ((value: unknown) => void)?]>;
+export declare function inSharedModuleTopLevel<T>(evaluate: () => T): T;
+export declare function sharedModuleValue<T>(value: T): T;
 /** Create an inline natlang callable instance for a compiled `nl` expression. */
 export declare function inline(plan: InlineLambdaPlan, values: readonly unknown[], accessors: CaptureAccessors, context?: Record<string, unknown>, version?: number, bound?: import('./context.js').Frame, origin?: InlineInstructionOrigin): NatlangCallable;
 /** Selected-executor counterpart: capture getter/setter calls are asynchronous guest invocations. */

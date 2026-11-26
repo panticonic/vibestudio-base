@@ -11,6 +11,18 @@ export type ModelTurnRequest = {
     seed: number | null;
     max_tokens: number | null;
     /**
+     * The reply must report the exact prompt and sampled token ids (an RL capture, `x_natlang_rl_capture`): a learned
+     * operator's call, whose reply is then captured in its own context from those ids (native/agent.ts operatorWrite).
+     * Only Neuralese transports send it; collection asks for every call anyway.
+     */
+    exact_ids?: true;
+    /**
+     * `false`: the reply starts after an empty reasoning block (the chat template's `enable_thinking: false`, its
+     * generation prompt ending in `<think></think>`): a learned operator's call, whose rows train no reasoning
+     * (native/agent.ts operatorWrite). Neuralese transports send it as `chat_template_kwargs.enable_thinking`.
+     */
+    thinking?: false;
+    /**
      * The assistant reply so far, cut off at the previous request's `max_tokens` before it called a tool: the server
      * continues this message (its reasoning, then its text) instead of starting a new one, and the turn it returns is the
      * whole message. Only drivers marked `continuesReplies` receive it.

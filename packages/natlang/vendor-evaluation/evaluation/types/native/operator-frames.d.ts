@@ -30,6 +30,9 @@ export type CapturedCall = {
     /** Write this text as the span after the whole reply (a Neuralese text write in its producing call,
      * `NeuralesePort.write`'s `context`), instead of capturing the reply's own tokens. */
     write?: string;
+    /** The chat-template switches the call was rendered with (`{enable_thinking: false}` for an operator's call): a
+     * capture that renders or forces the call again renders it the same way. */
+    chat_template_kwargs?: Record<string, unknown>;
 };
 /**
  * The producing context of one model call (`NativeWriteContext`): the request's messages and tools and, when the
@@ -39,6 +42,7 @@ export type CapturedCall = {
 export declare function callContext(request: {
     messages: unknown[];
     tools?: unknown[];
+    thinking?: false;
 }, response: {
     raw_response?: Record<string, unknown>;
 }): import('./neuralese-store.js').NativeWriteContext;
@@ -59,8 +63,6 @@ export declare const OPERATOR_FRAMES: Record<CompactSite['operator'] | 'compact-
 export declare function framedState(operator: CompactSite['operator'] | 'compact-history', ref: NeuraleseRef): string;
 /** The operators' reply caps in tokens (learned_operators.py `seed_cap`). */
 export declare const OPERATOR_SPAN_CAPS: Record<CompactSite['operator'] | 'compact-history', number>;
-/** Reasoning room of an operator call beyond its reply cap (tokens). */
-export declare const OPERATOR_REASONING_TOKENS = 2048;
 /**
  * With learned compaction selected, a tool output or argument longer than this many characters (~2k tokens) is cut and
  * compacted, whatever the call's context budget: learned compaction keeps large values out of the context, so it does
