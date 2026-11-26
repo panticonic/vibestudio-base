@@ -493,7 +493,6 @@ export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
 export type { AgentRecoveryFindings } from "./recoverAgentCapability/types.js";
 export * from "./generateOwnedIllustration/contract.js";
 export type { ExtensionDossierFindings } from "./reviewExtensionDossier/types.js";
-export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";
 export type { DeployedInterfaceOutcome } from "./reviewDeployedInterface/types.js";
 export * from "./workOnEvalHandoffGoal/journal/types.js";
 export * from "./workOnProgramRunGoal/runtime/types.js";
