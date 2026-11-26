@@ -61,7 +61,7 @@ export default {
     "additionalArguments": {}
   },
   "audience-response": {
-    "program": "skills/open-user-goal/chooseAudienceResponse.ts",
+    "program": "skills/open-user-goal/chooseAudienceResponse.nl",
     "callable": "chooseAudienceResponse",
     "resultType": "AudienceResult",
     "skill": "audienceResponse",
@@ -551,7 +551,7 @@ export default {
     "additionalArguments": {}
   },
   "workspace-share": {
-    "program": "skills/open-user-goal/reviewWorkspaceShare.ts",
+    "program": "skills/open-user-goal/reviewWorkspaceShare.nl",
     "callable": "reviewWorkspaceShare",
     "resultType": "WorkspaceShareOutcome",
     "skill": "workspaceShare",
@@ -651,7 +651,7 @@ export default {
     "additionalArguments": {}
   },
   "build-incident": {
-    "program": "skills/open-user-goal/reviewRetainedBuildIncident.ts",
+    "program": "skills/open-user-goal/reviewRetainedBuildIncident.nl",
     "callable": "reviewRetainedBuildIncident",
     "resultType": "BuildIncidentOutcome",
     "skill": "buildIncident",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"1a6c2f056214d23853bdb22a84e06a268a66faab0386c7aaf36d35cec79b77c3"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"30afdc465aee0b9a03a192e636773a02a20bb6986c84f7c93626ace2fe7b3961"};

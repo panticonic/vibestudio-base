@@ -2,7 +2,7 @@ import type {
   BuildIncidentBlocker as Blocker, BuildIncidentFinding as Finding,
   IncidentFocus as Focus, IncidentReceipt as Receipt, IncidentSurvey as Survey, RetainedProfile as Profile,
 } from "./contract.js";
-import type { BuildPerformanceReport as Review } from "./performance/types.js";
+import type { BuildPerformanceReport as Review } from "./assessCheckpoint/performance/types.js";
 
 export type IncidentSurvey = Survey;
 export type RetainedProfile = Profile;

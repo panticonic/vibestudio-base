@@ -60,7 +60,7 @@
     "additionalArguments": {}
   },
   "audience-response": {
-    "program": "skills/open-user-goal/chooseAudienceResponse.ts",
+    "program": "skills/open-user-goal/chooseAudienceResponse.nl",
     "callable": "chooseAudienceResponse",
     "resultType": "AudienceResult",
     "skill": "audienceResponse",
@@ -550,7 +550,7 @@
     "additionalArguments": {}
   },
   "workspace-share": {
-    "program": "skills/open-user-goal/reviewWorkspaceShare.ts",
+    "program": "skills/open-user-goal/reviewWorkspaceShare.nl",
     "callable": "reviewWorkspaceShare",
     "resultType": "WorkspaceShareOutcome",
     "skill": "workspaceShare",
@@ -650,7 +650,7 @@
     "additionalArguments": {}
   },
   "build-incident": {
-    "program": "skills/open-user-goal/reviewRetainedBuildIncident.ts",
+    "program": "skills/open-user-goal/reviewRetainedBuildIncident.nl",
     "callable": "reviewRetainedBuildIncident",
     "resultType": "BuildIncidentOutcome",
     "skill": "buildIncident",
