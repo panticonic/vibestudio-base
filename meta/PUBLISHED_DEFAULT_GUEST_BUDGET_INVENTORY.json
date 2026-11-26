@@ -1,0 +1,67 @@
+{
+  "schema": "vibestudio.published-default-guest-budget/1",
+  "publishedBaseAncestor": "8dd1110dbb957de55e9c97c8a3b21189fd34f783",
+  "engineChangesOnly": [
+    "b61caea43e40789b50ff8848983df8bf3557ea7f",
+    "49e50bb5848ff1fc46b6144beef69f8843d7c671"
+  ],
+  "actualChangedPaths": [
+    "meta/GUEST_EXECUTION_BUDGET_INVENTORY.json",
+    "meta/RETAINED_LIBRARY_BUDGET_IDENTITY.json",
+    "packages/eval/src/execute.ts",
+    "packages/eval/src/execution-budget.test.ts",
+    "packages/eval/src/index.ts",
+    "packages/eval/src/sandbox.ts",
+    "packages/eval/src/sourceFiles.ts"
+  ],
+  "privateGoalRootsImported": false,
+  "sdkOrVendorPathsChanged": false,
+  "profileRoots": [
+    "base",
+    "personal",
+    "system"
+  ],
+  "retainedPersonal": "22f600d86129c4b2bcc2b1796f7e194d3cd3182a",
+  "retainedSystem": "9fca74ccdf0c78279b84725adc26f5e3d7987bc5",
+  "sharedProducerInventory": [
+    {
+      "source": "published Base8dd",
+      "productionCalls": [
+        "packages/agentic-chat/hooks/useAgenticChat.ts:311 spreads explicit SandboxOptions",
+        "packages/agentic-chat/hooks/features/clientEval.ts:283 forwards user-requested whole timeout, no implicit3000 policy",
+        "packages/harness/src/tools/eval.ts:109 exposes explicit whole-cell timeout and NativeEvalExecution forwards input to Host"
+      ],
+      "sameThreeSecondPolicyProducer": false,
+      "absentPaths": [
+        "packages/living-canvas",
+        "workers/regency-realm",
+        "workers/adventure-world"
+      ],
+      "method": "rg --files over packages/skills/workers/panels/extensions returned no living-canvas/regency/adventure; production executeSandbox calls and implicit3000 producers inventoried before edits"
+    },
+    {
+      "source": "published Personal22f",
+      "sameThreeSecondPolicyProducer": false,
+      "method": "git grep exact commit under packages/skills/workers/panels/extensions for createEvalExecutor or timeoutMs:3000 returned no matches"
+    },
+    {
+      "source": "published System9f",
+      "sameThreeSecondPolicyProducer": false,
+      "method": "git grep exact commit under packages/skills/workers/panels/extensions for createEvalExecutor or timeoutMs:3000 returned no matches"
+    },
+    {
+      "source": "Examples",
+      "actualConsumers": [
+        "workers/regency-realm/policy.ts",
+        "workers/adventure-world/evaluate.ts",
+        "packages/living-canvas/src/execution.ts"
+      ],
+      "alreadyFixed": "28f6f93bd0563105a47c26c27855b751fd9a4881",
+      "reasonNotInDefaultThree": "Examples is not an installed default root; privateExamples/source43 selection is separately exact-source-bound"
+    }
+  ],
+  "remaining": [
+    "actual installed staged engine/Hub enforcement proof; version flags alone are insufficient",
+    "escaped scope callable/current-owner checkpoint integration remains open"
+  ]
+}
