@@ -133,6 +133,7 @@ export type PublicationGoalBinding = {
   preflight: PublishPreflightRequest | null;
   revision: PublicationRevisionRequest | null;
 };
+export type PublicationGoalEvidence = { preflight: PublishPreflightReport | null; revision: PublicationRevisionReport | null };
 export type PublicationGoalReport =
   | {
       status: "reviewed";

@@ -15,7 +15,8 @@
       "publishOwnedPreviewGoal.ts"
     ],
     "publicationGoal": [
-      "workTowardPublicationGoal.ts"
+      "workTowardPublicationGoal/discoverPublicationContext.ts",
+      "workTowardPublicationGoal/bindPublicationContext.ts"
     ],
     "websiteReadback": [
       "preflightPublication.nl"

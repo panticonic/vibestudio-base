@@ -7,6 +7,8 @@ args:
 returns: RolloutStage
 uses: [repairWorkspaceUnit/inspectUnit]
 ---
-1. Call diagnose with the goal, live stage and earlier findings. If the diagnosis is blocked, return the current stage with the specific cause.
-2. Call proposeRepair with the goal and diagnosed exact source. Use applyEdit with the observed revision and proposed edits. When the result changed, call inspectUnit with the goal and same unit id before proposing anything further. Do not submit the old edit at a new revision.
-3. On a successful apply, call checkCandidate at the returned revision. Return the actual check with an observation for its revision and build, retaining only the original unit and its editable path list. Include the diagnosis. Failed build or suite is evidence for a different hypothesis on the next invocation.
+Investigate one supported repair hypothesis using the goal, actual current stage and relevant earlier findings. Diagnosis and proposal functions can interpret actual source and compiler/check failures. Do not replace a protected policy or alter source for an observation-only request.
+
+Apply only a justified edit to the exact source revision and owned editable paths actually inspected. Interpret the Native result: a changed head or denied operation is not a repair and does not authorize replaying the old proposal. Acquire fresh current evidence before deciding what to try next.
+
+Establish actual build evidence for the resulting revision and obtain Native checks when requested and permitted. The inspection branch can preserve a compiler-only request without inventing a suite result. Return actual observation/check together with the supported diagnosis, using null for an unperformed check. A remaining failure supports a different hypothesis, not verified success.

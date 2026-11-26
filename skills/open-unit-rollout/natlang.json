@@ -4,13 +4,13 @@
   "version": "0.1.0",
   "targets": {
     "main": {
-      "entry": "repairWorkspaceUnit.ts"
+      "entry": "repairWorkspaceUnit.nl"
     }
   },
   "serviceBinding": "explicit",
   "serviceScopes": {
     "unitRolloutCatalog": [
-      "repairWorkspaceUnit.ts"
+      "repairWorkspaceUnit/discoverUnits.ts"
     ],
     "unitRolloutObserve": [
       "repairWorkspaceUnit/inspectUnit.nl",
@@ -24,7 +24,7 @@
       "repairWorkspaceUnit/evolveCandidate.nl"
     ],
     "unitRolloutCommit": [
-      "repairWorkspaceUnit.ts"
+      "repairWorkspaceUnit/commitCandidate.ts"
     ]
   }
 }

@@ -1,0 +1,27 @@
+{
+  "schema": "vibestudio.rollout-publication-goal-identity/1",
+  "baseline": "5a71152411b3f3465c2e030a436f12c298832830",
+  "counts": {
+    "unitRollout": 13,
+    "publication": 14
+  },
+  "originalFieldsUnchanged": true,
+  "addedUnitMetadata": "requestedReturnRequired: four literal questions true; nine native repair goals false",
+  "sources": [
+    {
+      "path": "skills/system-testing/open-goal-unit-rollout-worlds.ts",
+      "beforeSha256": "be913641d6ba02a9479adf2b76580378a254d3b11d1bb1fc5ee5a43097cfd89d",
+      "afterSha256": "2b3139c25703292be6e7b312ac8dd735bc8c352ea3b169712499bd1bbbe19a1d"
+    },
+    {
+      "path": "skills/system-testing/open-goal-publication-expansion-worlds.ts",
+      "beforeSha256": "fe8501e86a7b5b86d689f129aaabb4d6be628fdd697236cffd8bd8018f5477b5",
+      "afterSha256": "fe8501e86a7b5b86d689f129aaabb4d6be628fdd697236cffd8bd8018f5477b5"
+    },
+    {
+      "path": "skills/system-testing/open-goal-publication-worlds.ts",
+      "beforeSha256": "1094ba29ed70d2629bd8b6b9915314cd4fd59fb8e16017b8954f4ab3c58f4738",
+      "afterSha256": "1094ba29ed70d2629bd8b6b9915314cd4fd59fb8e16017b8954f4ab3c58f4738"
+    }
+  ]
+}
