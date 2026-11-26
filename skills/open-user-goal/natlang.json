@@ -279,12 +279,22 @@
     "reviewRetainedMemory": {
       "mounts": [
         "reviewRetainedMemory/evidence",
-        "reviewRetainedMemory/chooseMemorySearch/provenance",
-        "reviewRetainedMemory/resolveMemoryEvidence/evidence"
+        "reviewRetainedMemory/investigateRetainedMemory/chooseMemorySearch/provenance"
       ],
       "types": [
-        "RetainedMemoryReport",
-        "MemoryResult"
+        "MemoryBrief",
+        "MemoryPlan",
+        "MemoryKind",
+        "MemoryLead",
+        "MemoryMessage",
+        "MemoryFile",
+        "MemoryEvidence",
+        "MemoryCitation",
+        "MemoryOutcome",
+        "MemoryNote",
+        "MemoryResult",
+        "MemoryReaders",
+        "MemoryInvestigation"
       ]
     },
     "reconcileWorkspaceConfig": {
@@ -514,8 +524,6 @@
     "reviseCoordinatedDocuments/planCoordinatedRevision/policy": "skills/workspace-document-revision",
     "reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy": "skills/workspace-document-revision",
     "reviewRetainedMemory/evidence": "skills/open-retained-memory",
-    "reviewRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation",
-    "reviewRetainedMemory/resolveMemoryEvidence/evidence": "skills/open-retained-memory",
     "discoverScopedIntent/workspace": "skills/open-intent-discovery",
     "discoverScopedIntent/searchRelevantIntent/workspace": "skills/open-intent-discovery",
     "chooseAuthorizedEvidenceRoute/workspace": "skills/open-route-authority",
@@ -611,6 +619,7 @@
     "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/inspectSpecialistPresence/agents": "skills/agents/channel-membership",
     "workOnDemoPortfolio/investigatePortfolio/portfolio": "skills/open-demo-portfolio",
     "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioGarden/reviewer": "skills/examples-review",
-    "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review"
+    "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review",
+    "reviewRetainedMemory/investigateRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation"
   }
 }

@@ -14,8 +14,7 @@ export type MemoryEvidence = {
 };
 export type MemoryCitation = { layer: "message" | "commit" | "working"; ref: string; coordinate: string; quote: string };
 export type MemoryOutcome = {
-  disposition: "confirmed" | "contradicted" | "replaced" | "discussion-only" | "record-only" | "working-only" |
-    "ambiguous" | "no-evidence";
+  disposition: string;
   citations: MemoryCitation[]; summary: string;
 };
 export type MemoryNote = { path: string; digest: string };
@@ -24,3 +23,12 @@ export type RetainedMemoryReport = {
 };
 
 export type MemoryResult = {outcome:MemoryOutcome;handoff:MemoryNote|null};
+
+/** Reader capabilities for the owned originals; no artifact writer is exposed. */
+export type MemoryReaders = {
+  recall: (query:string,kinds:MemoryKind[])=>Promise<MemoryLead[]>;
+  transcript: (channelId:string)=>Promise<MemoryMessage[]>;
+  archivedFile: (eventId:string)=>Promise<MemoryFile|null>;
+  workingFile: ()=>Promise<MemoryFile|null>;
+};
+export type MemoryInvestigation = {plan:MemoryPlan;evidence:MemoryEvidence};

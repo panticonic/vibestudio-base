@@ -81,7 +81,7 @@ export default {
     "additionalArguments": {}
   },
   "retained-memory": {
-    "program": "skills/open-user-goal/reviewRetainedMemory.ts",
+    "program": "skills/open-user-goal/reviewRetainedMemory.nl",
     "callable": "reviewRetainedMemory",
     "resultType": "MemoryResult",
     "skill": "retainedMemory",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6ca2b438d9346671de78eeddc52af272d57f90b944b8b3bedb1513221d0d0fa1"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"1a40e00f1dfa7a20faf98c332df50510e90796b0ca3f8ea7aa880c785944a58d"};
