@@ -8,10 +8,12 @@
     "./observed-application-outcome": "./observed-application-outcome.ts",
     "./observed-invocation": "./observed-invocation.ts",
     "./semantic-outcome-contract": "./semantic-outcome-contract.ts",
-    "./observed-content-review": "./observed-content-review.ts"
+    "./observed-content-review": "./observed-content-review.ts",
+    "./native-action-journal": "./native-action-journal.ts"
   },
   "dependencies": {
-    "@vibestudio/content-addressing": "workspace:*"
+    "@vibestudio/content-addressing": "workspace:*",
+    "@workspace/natlang-services": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.7"
