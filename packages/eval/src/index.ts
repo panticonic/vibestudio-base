@@ -30,7 +30,12 @@ export { getAsyncTracking } from "./asyncTracking.js";
 export type { TrackingContext, AsyncTrackingAPI } from "./asyncTracking.js";
 
 // Unified sandbox execution engine
-export { executeSandbox, compileComponent, compileModule } from "./sandbox.js";
+export {
+  executeSandbox,
+  compileComponent,
+  compileModule,
+  EVAL_EXECUTION_BUDGET_VERSION,
+} from "./sandbox.js";
 export type {
   SandboxImportLoader,
   SandboxOptions,
