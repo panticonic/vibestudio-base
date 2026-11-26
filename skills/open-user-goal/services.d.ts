@@ -320,6 +320,8 @@ declare module "natlang:services" {
   export const agentCapabilityEvidence: {
     discover(): Promise<import("./recoverAgentCapability/contract.js").ActionAssignment>;
     inspect(id: string): Promise<import("./recoverAgentCapability/contract.js").ActionEvidence>;
+    readRetainedValues(id: string, resultDigest: string, revision: string):
+      Promise<import("./recoverAgentCapability/contract.js").RetainedNotebookValue[] | null>;
   };
   export const agentCapabilityContinue: {
     apply(id: string, resultDigest: string, revision: string,

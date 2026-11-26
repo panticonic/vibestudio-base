@@ -17,3 +17,14 @@ export type CapabilityDecision = "hold-ownership" | "hold-revision" | "inspect-o
   "confirm-continuation" | "retry-exact-step";
 export type Continuation = { kind: "confirmed-existing" | "retried-step"; original: string; runId: string; runDigest: string;
   resultDigest: string; valueDigest: string; revision: string };
+/** Actual retained notebook text, not a digest standing in for missing content. */
+export type RetainedNotebookValue = {
+  attempt: AttemptCard;
+  runId: string;
+  revision: string;
+  key: string;
+  content: string;
+  digest: string;
+  /** A later admitted continuation may have updated the same owned scope. */
+  observedAfterContinuation: string | null;
+};

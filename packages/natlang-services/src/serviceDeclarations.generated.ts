@@ -7122,11 +7122,26 @@ type ActionEvidence = {
   exactRetry: boolean;
 };
 
+type RetainedNotebookValue = {
+  attempt: AttemptCard;
+  runId: string;
+  revision: string;
+  key: string;
+  content: string;
+  digest: string;
+  /** A later admitted continuation may have updated the same owned scope. */
+  observedAfterContinuation: string | null;
+};
+
 /** Read the owned notebook and its actual native action receipt, console and scoped value. */
 export function discover(): Promise<ActionAssignment>;
 
 /** Read the owned notebook and its actual native action receipt, console and scoped value. */
-export function inspect(id: string): Promise<ActionEvidence>;`,
+export function inspect(id: string): Promise<ActionEvidence>;
+
+/** Read the owned notebook and its actual native action receipt, console and scoped value. */
+export function readRetainedValues(id: string, resultDigest: string, revision: string):
+      Promise<RetainedNotebookValue[] | null>;`,
   agentCapabilityContinue: `/** Confirm retained evidence or retry one exact approved local step. */
 
 type CapabilityDecision = "hold-ownership" | "hold-revision" | "inspect-only" | "recover-native-evidence" |
