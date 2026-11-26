@@ -4,7 +4,6 @@ export type RecordedSelection = { ref: string | null; blocker: "missing" | "ambi
 export type RecordedCohort = { ref: string; paths: { path: string; count: number }[]; complete: boolean };
 /** Already scoped by the native query to the selected proposal; this reference names the counteraction itself. */
 export type RecordedCounteraction = { path: string; reason: string; attempted: string; counteractionRef: string };
-export type RecordedEvidence = { cohort: RecordedCohort; withdrawn: RecordedCounteraction[] };
-export type RecordedAnswer = { disposition: "supported" | "caution" | "missing" | "ambiguous";
-  originalRationale: string | null; affected: string[]; withdrawn: string[]; reasons: string[] };
-export type RecordedQuestionReport = RecordedAnswer;
+export type RecordedEvidence = { cohort: RecordedCohort | null; withdrawn: RecordedCounteraction[] | null };
+/** The requested user-facing conclusion; native references and records stay in scoped evidence APIs. */
+export type RecordedQuestionFindings = { answer: string };

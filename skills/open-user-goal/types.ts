@@ -247,7 +247,7 @@ export type NotificationStateOutcome = {
   acknowledgment: NotificationAcknowledgment | null;
 };
 
-export * from "./desktop-readiness-types.js";
+export * from "./desktopReadinessTypes.js";
 
 export type SkillMaintenanceCard = { id: string; label: string; edition: "working" | "archive" };
 export type SkillMaintenanceClause = { path: string; parameters: string[]; returns: string };

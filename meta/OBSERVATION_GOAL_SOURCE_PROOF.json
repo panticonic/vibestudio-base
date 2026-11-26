@@ -1,0 +1,29 @@
+{
+  "schema": "vibestudio.observation-review-source-proof/1",
+  "worlds": [
+    {
+      "path": "skills/system-testing/open-goal-desktop-readiness-worlds.ts",
+      "cases": 29,
+      "originalSha256": "3fe37c18dcc661da14c5b28db6bac41db2791dcc94669a978dcf8d420920f363",
+      "currentSha256": "09a4899dbce4c040c8dbea6146e313421d0b27582887bd9e213982f203229ebe",
+      "allOriginalFieldsUnchanged": true,
+      "addedOnly": "requestedEvidence"
+    },
+    {
+      "path": "skills/system-testing/open-goal-provenance-question-worlds.ts",
+      "cases": 21,
+      "originalSha256": "8d2355fdc39e5ebe7a480f69812ce26f985a524f69aae6da692e3a47df449c44",
+      "currentSha256": "2358872c5647be236c65fdce2cfc5f68921c252b01cc5479c7c940163de70d10",
+      "allOriginalFieldsUnchanged": true,
+      "addedOnly": "requestedEvidence"
+    }
+  ],
+  "typeModuleNames": {
+    "rule": "spec/SPEC.md:197 item names must be identifiers",
+    "rootModulesChecked": 63,
+    "invalid": [],
+    "sharedDesktopModule": "desktopReadinessTypes.ts",
+    "otherNewDtoPlacement": "Recorded contract.ts/types.ts; local3 DTOs in existing root types.ts; Specialist/Provider/optional mounted DTOs branch-scoped, not unconditional optional imports"
+  },
+  "semanticCompletionClaimed": false
+}

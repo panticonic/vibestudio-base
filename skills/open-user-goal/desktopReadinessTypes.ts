@@ -20,7 +20,7 @@ export type DesktopUpdateObservation = {
   events: string[]; admissionPending: boolean; previousBuilds: string[]; portCalls: number;
 };
 export type DesktopReadinessEvidence = {
-  desk: DesktopDesk; admission: unknown; window: DesktopWindowObservation;
-  updates: DesktopUpdateObservation;
+  desk: DesktopDesk; admission: unknown; window: DesktopWindowObservation | null;
+  updates: DesktopUpdateObservation | null;
 };
 export type DesktopReadinessFindings = { reason: string };

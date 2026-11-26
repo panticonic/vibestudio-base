@@ -301,7 +301,7 @@ export default {
     "additionalArguments": {}
   },
   "desktopReadiness": {
-    "program": "skills/open-user-goal/reviewDesktopReadiness.ts",
+    "program": "skills/open-user-goal/reviewDesktopReadiness.nl",
     "callable": "reviewDesktopReadiness",
     "resultType": "DesktopReadinessFindings",
     "skill": "desktopReadiness",
@@ -441,9 +441,9 @@ export default {
     "additionalArguments": {}
   },
   "provenance-question": {
-    "program": "skills/open-user-goal/reviewRecordedQuestion.ts",
+    "program": "skills/open-user-goal/reviewRecordedQuestion.nl",
     "callable": "reviewRecordedQuestion",
-    "resultType": "RecordedQuestionReport",
+    "resultType": "RecordedQuestionFindings",
     "skill": "provenanceQuestion",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"1f05d389ec54dd63c8d54096ac0658d39b13f2650002df3bf3edba544cecb51f"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"c10c91f731b7341d3c7ea32c02616cd4c64a61054bb121099385a7d6d4fd8ed0"};

@@ -1,0 +1,108 @@
+{
+  "schema": "vibestudio.semantic-composition-inventory/1",
+  "baseline": "7b2d88539089e867ba79edd8abf50adb7ea80786",
+  "scope": [
+    "desktop-readiness",
+    "provenance-question"
+  ],
+  "files": [
+    {
+      "path": "skills/open-user-goal/reviewDesktopReadiness.ts",
+      "sha256": "64c4a04c68a04e80978b0c6b834fa1d900b07ca4fccdb9eccb2088981b94c884"
+    },
+    {
+      "path": "skills/open-user-goal/reviewRecordedQuestion.ts",
+      "sha256": "a9e3d84113af48d7374deeec3856b0341fdd63d425c0be7ece36b4eef195fada"
+    },
+    {
+      "path": "skills/open-user-goal/reviewDesktopReadiness/explainDesktopReadiness.nl",
+      "sha256": "d71825afa39b5216103daa3b5af9edd02ac5e955f2f80da3f643d5037ec7f84f"
+    },
+    {
+      "path": "skills/open-user-goal/reviewRecordedQuestion/collectRecordedEvidence.nl",
+      "sha256": "40aa85df7e91498ca29ef0945afbb6f29232308062db13c8e4ed9374daa5e365"
+    },
+    {
+      "path": "skills/open-user-goal/reviewRecordedQuestion/answerRecordedQuestion.nl",
+      "sha256": "8b0b31101c411691e27755668fd191f82d037e99e0cdff344b42e97856ccabb1"
+    },
+    {
+      "path": "skills/open-user-goal/natlang.json",
+      "sha256": "a9c2c7215da03df8d560a6546e1f8c73343ed3605fcdecd30e1791909d091c8b"
+    },
+    {
+      "path": "skills/open-user-goal/entries.json",
+      "sha256": "4e5599c227a871f426ff4bd8fdbffb76e86b892611e9fb55d055de640342cc8f"
+    }
+  ],
+  "ownership": {
+    "highLevelRoots": "TS currently fixes all semantic continuation/evidence-acquisition decisions; convert those computations to model-owned natural lambdas with existing typed children.",
+    "nativeBoundary": "Preserve exact TS/service readers, source qualifiers, task ownership/current head, graph traversal and immutable native bytes. No new service grants.",
+    "hierarchy": "Desktop retains existing nested ClientDevelopment semantic branch and finding leaf. Recorded retains discovery/search/selection, nested work-cohort/rejection evidence branch and final answer leaf.",
+    "knowledge": "Desktop existing lazy desktop-evidence skill remains available at interpretation leaf; Recorded obtains a lazy skill explaining provenance reference kinds and scope without prescribing a call route."
+  },
+  "consumers": {
+    "entryRegistry": "entries.json and generated entriesGenerated.ts program extension only; callable/arguments/resultType unchanged.",
+    "desktopNative": "SST open-goal-desktop-readiness-managed verifies actual source/current window/update/protected heads and mandatory returned semantic review. Its actor-all-reads predicates require separate literal-goal audit before relaxing.",
+    "recordedNative": "SST open-goal-provenance-question-managed preserves actual search/graph/current state; returned whole-object exact equality is a separate confirmed semantic gate requiring mandatory native-grounded review, not unconditional acceptance.",
+    "host": "Desktop map already mandatory; Recorded lacks mandatory review map and needs one in paired successor before relaxed native answer check ships."
+  },
+  "exclusions": [
+    "No Core/compiler/eval/schema/SDK edit required for root-authoring change.",
+    "Do not change any immutable Source43 worktree or old archive outcome.",
+    "No hidden fixtures/expected answers embedded in authored roots; no fixed helper sequence or helper-use quota."
+  ],
+  "open": [
+    "Physical Native VCS/desktop integration is not claimed by controlled factory adapters.",
+    "Independent goal-meaning review remains pending for native reference qualification; production admission requires it.",
+    "Remaining coordinator/native-gate census is not closed by these two domains."
+  ],
+  "status": "implemented-checked",
+  "completed": {
+    "roots": [
+      "reviewDesktopReadiness.nl",
+      "reviewRecordedQuestion.nl"
+    ],
+    "hierarchy": [
+      "Desktop root -> natural inspectDesktopEvidence -> exact TS observations and actual mounted System clientDevelopment subtree -> requested explanation",
+      "Recorded root -> identity selection -> natural evidence acquisition -> exact native cohort/counteraction boundaries -> requested answer"
+    ],
+    "publicValue": "DesktopReadinessFindings {reason:string}; RecordedQuestionFindings {answer:string}; no compatibility report alias",
+    "partialEvidence": "Actual unrequested Desktop observations and Recorded cohort/counteraction components are null, not fabricated readbacks.",
+    "selectionContract": "Identify a proposal handle for investigation; do not demand the final cohort/negative result before the handle needed to read it.",
+    "mechanicalSearch": "Actual search result forwarding is TS, not a sampled copy.",
+    "typeClosure": "Desktop shared DTO filename desktopReadinessTypes.ts follows spec identifier naming; global shared data has no optional mounted type dependency. All63 root TS module identifiers checked.",
+    "authority": "Exact TS Native readers and scoped service declarations retained. ClientDevelopment mount moved under the observation branch; actual public loader successfully exercised its service grant and actual NL call lineage.",
+    "originalCases": "0073 missing limiting reason and0075three missing identity/cohort/facts remain failures; no model/review rerun or acceptance overlay."
+  },
+  "validation": {
+    "publicComposition": {
+      "unit": "vibe-observation-composition-final-20261126a",
+      "passed": 5,
+      "realNLParentChildRecordsAsserted": true,
+      "peakGiB": 2.8
+    },
+    "wholeLibraryAndRegistry": {
+      "unit": "vibe-observation-public-loader-20261126a",
+      "passed": 10,
+      "initialFailure": "One negative asserted old TS diagnostic wording; actual undeclared-field refusal was correct. Focused corrected control passed b."
+    },
+    "counteractionNegative": {
+      "unit": "vibe-recorded-reference-feedback-20261126b",
+      "passed": 1,
+      "checks": "Actual undeclared-field diagnostic, corrected limiting result,0 native effects"
+    },
+    "nativeFactories": {
+      "unit": "vibe-observation-native-worlds-20261126b",
+      "passed": 53,
+      "worlds": 50
+    },
+    "canonicalDeclarations": {
+      "unit": "vibe-observation-host-final-20261126a",
+      "services": 380,
+      "freshness": true,
+      "nodeTests": 78
+    },
+    "distinctPublicControls": 12
+  }
+}

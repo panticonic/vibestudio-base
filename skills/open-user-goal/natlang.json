@@ -360,7 +360,7 @@
     },
     "reviewDesktopReadiness": {
       "mounts": [
-        "reviewDesktopReadiness/clientDevelopment"
+        "reviewDesktopReadiness/inspectDesktopEvidence/clientDevelopment"
       ]
     },
     "workOnSpecialistHandoffGoal": {
@@ -537,7 +537,7 @@
     "workOnRegencyBriefing/qualifyRegencyClaim/reviewer": "skills/examples-review",
     "maintainWorkspaceSkill/authoring": "skills/natlang-authoring",
     "workOnImageCandidateGoal/workspace": "skills/open-image-candidate",
-    "reviewDesktopReadiness/clientDevelopment": "skills/clientdev/natlang",
+    "reviewDesktopReadiness/inspectDesktopEvidence/clientDevelopment": "skills/clientdev/natlang",
     "workOnApiReadinessGoal/workspace": "skills/open-api-readiness",
     "workOnApiReadinessGoal/reviewQuietCredentials/installed": "skills/api-integrations/natlang",
     "reviewNewsEvidence/workspace": "skills/open-news-evidence",

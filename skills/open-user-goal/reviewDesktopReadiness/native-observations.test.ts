@@ -1,8 +1,8 @@
 import {expect,it,vi} from 'vitest';
 const native=vi.hoisted(()=>({readWindow:vi.fn(),readUpdates:vi.fn()}));
 vi.mock('natlang:services',()=>({desktopReadiness:native}));
-import inspectWindow from './inspectDesktopWindow.js';
-import inspectUpdates from './inspectDesktopUpdates.js';
+import inspectWindow from './inspectDesktopEvidence/inspectDesktopWindow.js';
+import inspectUpdates from './inspectDesktopEvidence/inspectDesktopUpdates.js';
 it('forwards the exact scoped native observations without a sampled copy or changed authority',async()=>{
  const desk={id:'actual-owned',name:'Desk',operationId:'operation'};
  const window={deskId:desk.id,status:'restored',before:null,current:null,queuedFocus:null,pendingPlacementEdit:false};
