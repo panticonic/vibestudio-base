@@ -22,7 +22,7 @@ it('selects actual candidate evidence hierarchically and returns the requested f
   'return frontier.coordinates.find(item=>item.path===card.usual)??null;',
   'return {decision:"carry-both",record:false,finding:"The actual separate local and incoming edits can coexist.",proof:[preview.base.digest!,preview.ours.digest!,preview.theirs.digest!]};',
  ],'Tell me here whether the local and incoming startup edits can coexist; do not create a note.');
- expect(answer).toEqual({decision:'carry-both',finding:'The actual separate local and incoming edits can coexist.'});expect(calls).toEqual(['discover','compare','preview']);
+ expect(answer).toEqual({finding:'The actual separate local and incoming edits can coexist.'});expect(calls).toEqual(['discover','compare','preview']);
 },180000);
 it('composes scaffold interpretation and retains the actual native candidate without publishing it',async()=>{
  const card={id:'brief',label:'Owned helper',names:['helper'],event:'basis',edition:'owned',permission:'draft'};const options={id:'brief',available:['stateless'],occupied:[],svelteSource:null,protectedMain:'main'};const receipt={commandId:'actual',draft:'native-draft',publication:'unchanged',runtime:'unchanged',units:[{target:'workers/helper',kind:'stateless',files:['package.json','index.ts'],manifestDigest:'manifest',entry:'index.ts',portableEntry:null,hostAbi:null,authority:[],nativeTests:[]}]};let writes=0;
@@ -44,5 +44,5 @@ it('preserves a caretaker authority hold from actual scene evidence without pret
   'return {scene:await readOwnerView(id),scope:await readCaretakerScope(id)};',
   'return {action:"hold-authority",finding:"The installed current scene is retained; no signed staging approval is present.",proposedIds:[],description:null};',
  ],'Tell me whether a new scene is authorized and leave the installed garden alone without current approval.');
- expect(answer).toEqual({action:'hold-authority',finding:'The installed current scene is retained; no signed staging approval is present.'});expect(reads).toBe(2);
+ expect(answer).toEqual({finding:'The installed current scene is retained; no signed staging approval is present.'});expect(reads).toBe(2);
 },180000);

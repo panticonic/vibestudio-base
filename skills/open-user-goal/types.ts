@@ -356,7 +356,7 @@ export type GrimoireSceneReceipt = {
 export type GrimoireSceneReadback = {
   ownerId: string; frontier: string; sceneDigest: string; fileDigest: string | null;
 };
-export type GrimoireSceneOutcome = GrimoireSceneReceipt | { action: GrimoirePlan["action"]; finding: string };
+export type GrimoireSceneOutcome = GrimoireSceneReceipt | { finding: string };
 
 export type AdoptionReviewCard = { id: string; title: string; event: string; edition: "staged" | "retired"; mayRecord: boolean };
 export type AdoptionInstalled = { repository: string; packageName: string; manifestDigest: string; templateDigest: string; main: string };
@@ -401,7 +401,7 @@ export type SystemCandidatePlan = { decision: SystemCandidateDecision; record: b
 export type SystemCandidateGate = { current: boolean; event: string; main: string };
 export type SystemCandidateReceipt = { path: string; digest: string; coordinate: string; event: string };
 export type SystemCandidateReadback = { event: string; main: string; artifactDigest: string | null };
-export type SystemCandidateOutcome = SystemCandidateReceipt | { decision: SystemCandidateDecision; finding: string };
+export type SystemCandidateOutcome = SystemCandidateReceipt | { finding: string };
 
 export type ScaffoldKind = "react" | "react-site" | "svelte" | "svelte-site" | "stateless" | "agentic" |
   "package" | "skill" | "content" | "web-client" | "terminal-client" | "native-client";
@@ -414,7 +414,7 @@ export type ScaffoldPlan = {
 export type ScaffoldDraftUnit = { target: string; kind: ScaffoldKind; files: string[]; manifestDigest: string | null; entry: string | null; portableEntry: string | null; hostAbi: string | null; authority: string[]; nativeTests: string[] };
 export type ScaffoldReceipt = { commandId: string; draft: string; publication: "unchanged"; runtime: "unchanged"; units: ScaffoldDraftUnit[] };
 export type ScaffoldReadback = { main: string; draft: string; units: ScaffoldDraftUnit[] };
-export type ScaffoldOutcome = ScaffoldReceipt | { disposition: ScaffoldPlan["disposition"]; finding: string };
+export type ScaffoldOutcome = ScaffoldReceipt | { finding: string };
 
 export type LocalMethodKind = "inspect-counts" | "compare-template" | "verify-ownership" | "confirm-state";
 export type LocalMethodCard = { id: string; title: string; method: LocalMethodKind; edition: "current" | "retired" };
