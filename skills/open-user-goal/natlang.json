@@ -20,7 +20,7 @@
     ],
     "unitHandoff": [
       "reviewUnitHandoffGoal/reviewDesign.nl",
-      "reviewUnitHandoffGoal.ts"
+      "reviewUnitHandoffGoal.nl"
     ],
     "boardMigration": [
       "reviewBoardMigration/readMigrationTarget.ts",
@@ -184,8 +184,7 @@
         "reviewUnitHandoffGoal/reviewIdentity/installed"
       ],
       "types": [
-        "UnitHandoffReport",
-        "UnitHandoffResult"
+        "UnitHandoffFindings"
       ]
     },
     "prepareContentProject": {
@@ -316,7 +315,8 @@
         "reviewLocalExecutionWidth/readiness"
       ],
       "types": [
-        "LocalWidthOutcome"
+        "LocalWidthOutcome",
+        "LocalWidthInquiry"
       ]
     },
     "compareLiveLocalInventory": {
@@ -360,7 +360,8 @@
         "compareTestkitCloseouts/readAttempt/session"
       ],
       "types": [
-        "CloseoutReport"
+        "CloseoutReport",
+        "CloseoutInquiry"
       ]
     },
     "chooseAudienceResponse": {

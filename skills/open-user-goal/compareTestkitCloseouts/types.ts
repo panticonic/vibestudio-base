@@ -15,3 +15,5 @@ export type CloseoutDecision = {
 };
 export type CloseoutReceipt = { path: string; sha256: string; bytes: number };
 export type CloseoutReport = {decision: CloseoutDecision; handoff: CloseoutReceipt | null};
+
+export type CloseoutInquiry = {pair:CloseoutPair;current:CloseoutEvidence;prior:CloseoutEvidence|null};

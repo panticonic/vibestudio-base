@@ -411,7 +411,7 @@ export default {
     "additionalArguments": {}
   },
   "testkit-closeout": {
-    "program": "skills/open-user-goal/compareTestkitCloseouts.ts",
+    "program": "skills/open-user-goal/compareTestkitCloseouts.nl",
     "callable": "compareTestkitCloseouts",
     "resultType": "CloseoutReport",
     "skill": "testkitCloseout",
@@ -571,7 +571,7 @@ export default {
     "additionalArguments": {}
   },
   "local-width": {
-    "program": "skills/open-user-goal/reviewLocalExecutionWidth.ts",
+    "program": "skills/open-user-goal/reviewLocalExecutionWidth.nl",
     "callable": "reviewLocalExecutionWidth",
     "resultType": "LocalWidthOutcome",
     "skill": "localWidth",
@@ -611,9 +611,9 @@ export default {
     "additionalArguments": {}
   },
   "unit-handoff": {
-    "program": "skills/open-user-goal/reviewUnitHandoffGoal.ts",
+    "program": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
     "callable": "reviewUnitHandoffGoal",
-    "resultType": "UnitHandoffResult",
+    "resultType": "UnitHandoffFindings",
     "skill": "unitHandoff",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"30afdc465aee0b9a03a192e636773a02a20bb6986c84f7c93626ace2fe7b3961"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"fe257a9a798567339c40d81ec9d5e6744de8417df5f153c0fe62ced99c53919e"};

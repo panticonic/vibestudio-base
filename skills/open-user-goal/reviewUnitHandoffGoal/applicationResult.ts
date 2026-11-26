@@ -1,2 +1,3 @@
-import type {UnitHandoffReport,UnitHandoffResult} from "./types.js";
-export default function applicationResult(report:UnitHandoffReport):UnitHandoffResult {return {decision:report.decision,path:report.plan.path,design:report.design,identity:report.identity,reason:report.reason};}
+import type {UnitHandoffFindings,UnitHandoffUnit,UnitIdentityChange} from "./types.js";
+/** Preserve the actual requested answer and native unit/draft values. */
+export default function applicationResult(explanation:string,unit:UnitHandoffUnit|null,draft:UnitIdentityChange|null):UnitHandoffFindings{return {explanation,unit,draft};}

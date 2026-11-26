@@ -26,7 +26,7 @@ export function bindUnitIdentity(input: Assignment) {
     throw new Error("Assign one existing executable unit in the current context");
   const request: UnitIdentityRequest = { operationId: crypto.randomUUID(), goal, unit, prepare };
   let baseline: Promise<Awaited<ReturnType<typeof snapshot>>> | undefined;
-  let resolved: Promise<UnitIdentityCandidate | null> | undefined;
+  const resolved = new Map<string, UnitIdentityCandidate>();
   let staged = false;
 
   async function snapshot() {
@@ -83,38 +83,50 @@ export function bindUnitIdentity(input: Assignment) {
       unitIdentity: {
         async observe(id: string) {
           verifyId(id);
-          return structuredClone((await (baseline ??= snapshot())).observation);
+          const current = await snapshot();
+          // Reads stay fresh; a later observation never renews the original
+          // mutation authority or its compare-and-swap baseline.
+          baseline ??= Promise.resolve(current);
+          return structuredClone(current.observation);
         },
         async resolve(id: string, intent: IconIntent) {
           verifyId(id);
-          if (!baseline || resolved) throw new Error("Resolve one icon from the observed unit");
-          resolved = candidate(intent);
-          return structuredClone(await resolved);
+          const choice = await candidate(intent);
+          if (choice) resolved.set(choice.choice.id, structuredClone(choice));
+          return structuredClone(choice);
         },
         async stage(id: string, revision: string, authoringId: string): Promise<UnitIdentityChange> {
           verifyId(id);
           const original = await baseline;
-          const chosen = await resolved;
+          const chosen = resolved.get(authoringId);
           if (!prepare || !original || !chosen || staged || original.observation.revision !== revision ||
             chosen.choice.id !== authoringId ||
             (original.observation.icon === chosen.declaration && original.observation.artworkDigest === chosen.artworkDigest))
             throw new Error("Prepare only a changed, resolved icon at the caller's assigned revision");
           staged = true;
-          const change = await setUnitIcon({
-            repoPath, icon: authoringId, expectedWorkingHead: original.status.workingHead,
-          });
-          const after = await snapshot();
-          if (after.observation.revision !== revisionId(change.preparation.workingHead) || !after.observation.icon)
-            throw new Error("The working state changed before icon verification");
-          return {
-            repoPath,
-            revision: after.observation.revision,
-            icon: after.observation.icon,
-            artworkDigest: after.observation.artworkDigest,
-            mainUnchanged: after.status.mainEventId === original.status.mainEventId,
-            manifestOtherwiseUnchanged: after.manifestDigest === original.manifestDigest,
-            changedFiles: change.files,
-          };
+          try {
+            const change = await setUnitIcon({
+              repoPath, icon: authoringId, expectedWorkingHead: original.status.workingHead,
+            });
+            const after = await snapshot();
+            if (after.observation.revision !== revisionId(change.preparation.workingHead) || !after.observation.icon)
+              throw new Error("The working state changed before icon verification");
+            return {
+              repoPath,
+              revision: after.observation.revision,
+              icon: after.observation.icon,
+              artworkDigest: after.observation.artworkDigest,
+              mainUnchanged: after.status.mainEventId === original.status.mainEventId,
+              manifestOtherwiseUnchanged: after.manifestDigest === original.manifestDigest,
+              changedFiles: change.files,
+            };
+          } catch (error) {
+            // An uncommitted IO failure is retryable. If the edit committed
+            // before verification failed, the original VCS CAS still refuses
+            // a second mutation at that old head.
+            staged = false;
+            throw error;
+          }
         },
       },
     },
