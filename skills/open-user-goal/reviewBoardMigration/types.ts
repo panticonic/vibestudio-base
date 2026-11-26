@@ -46,3 +46,5 @@ export type BoardMigrationReceipt = {
 };
 
 export type BoardMigrationOutcome = { disposition: "audit" | "held" | "retained" | "existing"; receipt: BoardMigrationReceipt | null; reason: string };
+
+export type BoardInquiry={view:MigrationView|null;basis:MigrationBasis|null;selection:MigrationSelection|null};

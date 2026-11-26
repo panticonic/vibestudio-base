@@ -1,6 +1,6 @@
 export type ClaimScope={id:string;title:string;purpose:"review"|"archive"};
 export type ClaimIndex={scopes:ClaimScope[]};
-export type ClaimReviewChoice={id:string;retain:boolean};
+export type ClaimReviewChoice={id:string|null;retain:boolean};
 export type ClaimRequirement={id:string;text:string};
 export type ClaimPacket={id:string;title:string;candidateEvent:string;priorEvent:string;protectedEvent:string;
   requirements:ClaimRequirement[];packetHash:string};

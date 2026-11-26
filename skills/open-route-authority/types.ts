@@ -6,7 +6,7 @@ export type RouteAuthorityObservation={operationId:string;decision:string;leaves
 export type RouteAuthorityReport={status:string;protectedLeaves:RouteAuthorityScope[];held:string[];
   reviews:{observation:RouteAuthorityObservation;outside:RouteAuthorityScope[];disposition:string}[]};
 export type RouteOffer={title:string;purpose:string;field:string;routes:VisibleRoute[];request:RouteAuthorityRequest};
-export type RouteChoice={routeId:string;execute:boolean;retain:boolean;reason:string};
+export type RouteChoice={routeId:string|null;execute:boolean;retain:boolean;reason:string};
 export type ExactRouteRecord={basis:EvidenceBasis;coordinate:string;field:string;value:string;fileHash:string};
 export type RouteReadback={routeId:string;records:(ExactRouteRecord|null)[]};
 export type RouteOutcome={status:"verified"|"mismatch"|"missing"|"outside-limit"|"needs-approval"|"refused"|"eligible-preflight";summary:string};

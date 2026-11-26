@@ -23,7 +23,7 @@
       "reviewUnitHandoffGoal.ts"
     ],
     "boardMigration": [
-      "reviewBoardMigration.ts",
+      "reviewBoardMigration/readMigrationTarget.ts",
       "reviewBoardMigration/locateSource.nl",
       "reviewBoardMigration/decideMigration.nl"
     ],
@@ -221,6 +221,7 @@
       ],
       "types": [
         "WelcomeGoalReport",
+        "WelcomeInquiry",
         "WelcomeResult"
       ]
     },
@@ -304,6 +305,7 @@
         "reconcileWorkspaceConfig/collectConfigEvidence/settings"
       ],
       "types": [
+        "ConfigInquiry",
         "ConfigReport",
         "ConfigResult"
       ]
@@ -512,6 +514,61 @@
         "ReadinessReport",
         "ApiReadinessResult",
         "IntegrationHistory"
+      ]
+    },
+    "discoverScopedIntent": {
+      "mounts": [
+        "discoverScopedIntent/workspace",
+        "discoverScopedIntent/searchRelevantIntent/workspace"
+      ],
+      "types": [
+        "IntentInquiry",
+        "IntentReport"
+      ]
+    },
+    "chooseAuthorizedEvidenceRoute": {
+      "mounts": [
+        "chooseAuthorizedEvidenceRoute/workspace",
+        "chooseAuthorizedEvidenceRoute/inspectExactRouteAuthority/authority"
+      ],
+      "types": [
+        "OwnedRouteReview",
+        "RouteInquiry",
+        "RouteResult"
+      ]
+    },
+    "reviewWorkspaceClaims": {
+      "mounts": [
+        "reviewWorkspaceClaims/workspace",
+        "reviewWorkspaceClaims/verifyClaimSupport/evidenceRules"
+      ],
+      "types": [
+        "ClaimInquiry",
+        "ClaimResult",
+        "WorkspaceClaimReview"
+      ]
+    },
+    "workOnChatContinuity": {
+      "mounts": [
+        "workOnChatContinuity/workspace",
+        "workOnChatContinuity/reviewChatContinuity/policy"
+      ],
+      "types": [
+        "ChatContinuityReport",
+        "ChatInquiry",
+        "ChatResult"
+      ]
+    },
+    "workOnBridgeDelivery": {
+      "mounts": [
+        "workOnBridgeDelivery/project",
+        "workOnBridgeDelivery/inspectCurrentBridge/bridge",
+        "workOnBridgeDelivery/reviewDeliveryFile/semantic"
+      ],
+      "types": [
+        "BridgeDeliveryReport",
+        "BridgeInquiry",
+        "BridgeResult"
       ]
     }
   },

@@ -50,7 +50,7 @@
     "additionalArguments": {}
   },
   "workspace-config": {
-    "program": "skills/open-user-goal/reconcileWorkspaceConfig.ts",
+    "program": "skills/open-user-goal/reconcileWorkspaceConfig.nl",
     "callable": "reconcileWorkspaceConfig",
     "resultType": "ConfigResult | null",
     "skill": "workspaceConfig",
@@ -90,7 +90,7 @@
     "additionalArguments": {}
   },
   "intent-discovery": {
-    "program": "skills/open-user-goal/discoverScopedIntent.ts",
+    "program": "skills/open-user-goal/discoverScopedIntent.nl",
     "callable": "discoverScopedIntent",
     "resultType": "IntentReport",
     "skill": "intentDiscovery",
@@ -100,7 +100,7 @@
     "additionalArguments": {}
   },
   "board-migration": {
-    "program": "skills/open-user-goal/reviewBoardMigration.ts",
+    "program": "skills/open-user-goal/reviewBoardMigration.nl",
     "callable": "reviewBoardMigration",
     "resultType": "BoardMigrationOutcome",
     "skill": "boardMigration",
@@ -120,7 +120,7 @@
     "additionalArguments": {}
   },
   "route-authority": {
-    "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.ts",
+    "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.nl",
     "callable": "chooseAuthorizedEvidenceRoute",
     "resultType": "RouteResult",
     "skill": "ownedRouteAuthority",
@@ -200,7 +200,7 @@
     "additionalArguments": {}
   },
   "workspace-claims": {
-    "program": "skills/open-user-goal/reviewWorkspaceClaims.ts",
+    "program": "skills/open-user-goal/reviewWorkspaceClaims.nl",
     "callable": "reviewWorkspaceClaims",
     "resultType": "ClaimResult | null",
     "skill": "workspaceClaims",
@@ -210,7 +210,7 @@
     "additionalArguments": {}
   },
   "bridge-delivery": {
-    "program": "skills/open-user-goal/workOnBridgeDelivery.ts",
+    "program": "skills/open-user-goal/workOnBridgeDelivery.nl",
     "callable": "workOnBridgeDelivery",
     "resultType": "BridgeResult | null",
     "skill": "bridgeDelivery",
@@ -220,7 +220,7 @@
     "additionalArguments": {}
   },
   "chat-continuity": {
-    "program": "skills/open-user-goal/workOnChatContinuity.ts",
+    "program": "skills/open-user-goal/workOnChatContinuity.nl",
     "callable": "workOnChatContinuity",
     "resultType": "ChatResult",
     "skill": "chatContinuity",
@@ -390,7 +390,7 @@
     "additionalArguments": {}
   },
   "personal-welcome": {
-    "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.ts",
+    "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
     "callable": "workOnPersonalWelcomeGoal",
     "resultType": "WelcomeResult",
     "skill": "personalWelcome",

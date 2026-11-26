@@ -470,14 +470,9 @@ export type TerminalRepairPlan = {
 
 export type TerminalRepairReport = { artifact: TerminalRepairArtifact | null; outcome: "verified" | "already-ready" | "diagnosed" | "hold-edit" | "hold-test" | "hold-moved" | "blocked"; explanation: string };
 
-export type { IntentReport } from "./discoverScopedIntent/types.js";
-export type { BoardMigrationOutcome } from "./reviewBoardMigration/types.js";
 export type { LiveTendrilOutcome } from "./workOnLiveTendrilBoard/types.js";
-export type { OwnedRouteReview } from "./chooseAuthorizedEvidenceRoute/types.js";
 export type { LaunchReport } from "./reconcilePanelLaunchState/types.js";
-export type { WorkspaceClaimReview } from "./reviewWorkspaceClaims/types.js";
 export type { OperationsGoalOutcome } from "./coordinateOwnedOperations/types.js";
-export type { BridgeDeliveryReport } from "./workOnBridgeDelivery/types.js";
 export * from "./workOnAuthoringGoal/discovery/types.js";
 export type { ReadinessReport as ApiReadinessReport } from "./workOnApiReadinessGoal/types.js";
 export * from "./reviewWebhookAdmission/contract.js";
@@ -495,7 +490,6 @@ export * from "./reviewSystemRelease/contract.js";
 export type { PanelSourceMigrationOutcome } from "./migratePanelSource/types.js";
 export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
 export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
-export type { ChatContinuityReport } from "./workOnChatContinuity/types.js";
 export * from "./generateOwnedIllustration/contract.js";
 export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";
 export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";
@@ -528,15 +522,11 @@ export * from "./workOnProblemReportGoal/types.js";
 export type ResearchRevision = { research: ResearchGoalReport; revision: WorkspaceEditReport | null };
 export type WorkspaceAnswer = { answer: string; citations: { path: string; version: string; quote: string }[]; unresolved: string[] };
 
-export type { RouteResult } from "./chooseAuthorizedEvidenceRoute/types.js";
 
 export type { LaunchResult } from "./reconcilePanelLaunchState/types.js";
 
-export type { ClaimResult } from "./reviewWorkspaceClaims/types.js";
 
-export type { BridgeResult } from "./workOnBridgeDelivery/types.js";
 
-export type { ChatResult } from "./workOnChatContinuity/types.js";
 
 
 
@@ -555,3 +545,6 @@ export type { ProgramRunReport } from "./workOnProgramRunGoal/types.js";
 export type { AuthoringOpenOutcome } from "./workOnAuthoringGoal/types.js";
 
 export type { AssemblyReport } from "./workOnAssemblyGoal/types.js";
+
+// This closed board DTO has no optional workspace mount dependencies.
+export type { BoardMigrationOutcome, BoardInquiry } from "./reviewBoardMigration/types.js";

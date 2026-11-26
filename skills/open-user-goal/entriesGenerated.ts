@@ -51,7 +51,7 @@ export default {
     "additionalArguments": {}
   },
   "workspace-config": {
-    "program": "skills/open-user-goal/reconcileWorkspaceConfig.ts",
+    "program": "skills/open-user-goal/reconcileWorkspaceConfig.nl",
     "callable": "reconcileWorkspaceConfig",
     "resultType": "ConfigResult | null",
     "skill": "workspaceConfig",
@@ -91,7 +91,7 @@ export default {
     "additionalArguments": {}
   },
   "intent-discovery": {
-    "program": "skills/open-user-goal/discoverScopedIntent.ts",
+    "program": "skills/open-user-goal/discoverScopedIntent.nl",
     "callable": "discoverScopedIntent",
     "resultType": "IntentReport",
     "skill": "intentDiscovery",
@@ -101,7 +101,7 @@ export default {
     "additionalArguments": {}
   },
   "board-migration": {
-    "program": "skills/open-user-goal/reviewBoardMigration.ts",
+    "program": "skills/open-user-goal/reviewBoardMigration.nl",
     "callable": "reviewBoardMigration",
     "resultType": "BoardMigrationOutcome",
     "skill": "boardMigration",
@@ -121,7 +121,7 @@ export default {
     "additionalArguments": {}
   },
   "route-authority": {
-    "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.ts",
+    "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.nl",
     "callable": "chooseAuthorizedEvidenceRoute",
     "resultType": "RouteResult",
     "skill": "ownedRouteAuthority",
@@ -201,7 +201,7 @@ export default {
     "additionalArguments": {}
   },
   "workspace-claims": {
-    "program": "skills/open-user-goal/reviewWorkspaceClaims.ts",
+    "program": "skills/open-user-goal/reviewWorkspaceClaims.nl",
     "callable": "reviewWorkspaceClaims",
     "resultType": "ClaimResult | null",
     "skill": "workspaceClaims",
@@ -211,7 +211,7 @@ export default {
     "additionalArguments": {}
   },
   "bridge-delivery": {
-    "program": "skills/open-user-goal/workOnBridgeDelivery.ts",
+    "program": "skills/open-user-goal/workOnBridgeDelivery.nl",
     "callable": "workOnBridgeDelivery",
     "resultType": "BridgeResult | null",
     "skill": "bridgeDelivery",
@@ -221,7 +221,7 @@ export default {
     "additionalArguments": {}
   },
   "chat-continuity": {
-    "program": "skills/open-user-goal/workOnChatContinuity.ts",
+    "program": "skills/open-user-goal/workOnChatContinuity.nl",
     "callable": "workOnChatContinuity",
     "resultType": "ChatResult",
     "skill": "chatContinuity",
@@ -391,7 +391,7 @@ export default {
     "additionalArguments": {}
   },
   "personal-welcome": {
-    "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.ts",
+    "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
     "callable": "workOnPersonalWelcomeGoal",
     "resultType": "WelcomeResult",
     "skill": "personalWelcome",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"77322a7ab9600469fa8845e94d96f0150a0864013482d488d688e39f909b7a67"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"41901e566be9e23ef3889229fca3296212c48c6babb80c6d4bf596bcc45e48b3"};

@@ -7,7 +7,7 @@ export type BridgeScope={id:string;title:string;path:string;purpose:"delivery"|"
 export type BridgeIndex={scopes:BridgeScope[]};
 export type DeliveryScope={id:string;repository:string;remote:string;branch:string;reviewSince:number;retained:RetainedBranch|null;
   retainedDigest:string|null;specPath:string;notePath:string};
-export type BridgePlan={id:string;intent:"review"|"commit";handoff:boolean};
+export type BridgePlan={id:string|null;intent:"review"|"commit";handoff:boolean};
 export type DeliveryVersion={hash:string;fileId:string;mode:number;excerpt:string|null;truncated:boolean};
 export type DeliveryFile={path:string;working:DeliveryVersion|null;committed:DeliveryVersion|null;protectedMain:DeliveryVersion|null;
   hasLocalDifference:boolean;hasDeliveryDifference:boolean};
@@ -39,7 +39,7 @@ export type BranchAssessment={status:"aligned"|"target-mismatch"|"failed-observa
 export type BridgeDecision={status:"reviewed"|"hold"|"commit";explanation:string};
 export type LocalDeliveryReceipt={repository:string;eventId:string;from:DeliveryState;protectedEventId:string;files:string[]};
 export type BranchPrivateNote={path:string;digest:string};
-export type BridgeDeliveryReport={scope:DeliveryScope;plan:BridgePlan;local:LocalGitReview;spec:LocalFileReview;note:LocalFileReview;
+export type BridgeDeliveryReport={scope:DeliveryScope;plan:BridgePlan;local:LocalGitReview|null;spec:LocalFileReview|null;note:LocalFileReview|null;
   branch:BranchAssessment;decision:BridgeDecision;commit:LocalDeliveryReceipt|null;handoff:BranchPrivateNote|null};
 
 export type BridgeResult = {branch:BranchAssessment;decision:BridgeDecision;commit:LocalDeliveryReceipt|null;handoff:BranchPrivateNote|null};

@@ -6,3 +6,5 @@ args:
 returns: ClaimReviewChoice
 ---
 Choose only the active review packet matching the goal. The same title can refer to an archive with earlier evidence. Set retain only if the user asks for a private review or signoff note.
+
+If no unambiguous matching current scope exists, return null as its ID and request no write or handoff. An unavailable selection is not a reason to invent an identifier.
