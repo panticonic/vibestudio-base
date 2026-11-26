@@ -4,13 +4,13 @@
   "version": "0.1.0",
   "targets": {
     "main": {
-      "entry": "recoverSessionGoal.ts"
+      "entry": "recoverSessionGoal.nl"
     }
   },
   "serviceBinding": "explicit",
   "serviceScopes": {
     "recoverySessions": [
-      "recoverSessionGoal.ts"
+      "recoverSessionGoal.nl"
     ],
     "recoveryReplay": [
       "recoverSessionGoal/readRecoveryWindows.nl"

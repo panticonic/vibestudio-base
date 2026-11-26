@@ -521,7 +521,6 @@ export type { RecoveryHandoffOutcome, RecoveryHandoffDirective, RecoveryHandoffI
 export * from "./workOnProblemReportGoal/types.js";
 
 export type { DictationGoalReport } from "./workOnDictationHandoffGoal/types.js";
-export * from "./workOnProviderHandoffGoal/types.js";
 
 
 export type ResearchRevision = { research: ResearchGoalReport; revision: WorkspaceEditReport | null };
@@ -548,7 +547,6 @@ export type { DevelopmentAuditFindings } from "./reviewDevelopmentAudit/types.js
 
 export type { DictationResult } from "./workOnDictationHandoffGoal/types.js";
 
-export type { ProviderResult } from "./workOnProviderHandoffGoal/types.js";
 
 export type { TerminalResult } from "./workOnTerminalGoal/types.js";
 

@@ -240,7 +240,7 @@
     "additionalArguments": {}
   },
   "editorial-packet": {
-    "program": "skills/open-user-goal/workOnEditorialPacket.ts",
+    "program": "skills/open-user-goal/workOnEditorialPacket.nl",
     "callable": "workOnEditorialPacket",
     "resultType": "EditorialPacketResult",
     "skill": "editorialPacket",
@@ -670,7 +670,7 @@
     "additionalArguments": {}
   },
   "provider-handoff": {
-    "program": "skills/open-user-goal/workOnProviderHandoffGoal.ts",
+    "program": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
     "callable": "workOnProviderHandoffGoal",
     "resultType": "ProviderResult",
     "skill": "providerHandoff",
@@ -1030,7 +1030,7 @@
     "additionalArguments": {}
   },
   "recovery": {
-    "program": "skills/open-session-recovery/program/recoverSessionGoal.ts",
+    "program": "skills/open-session-recovery/program/recoverSessionGoal.nl",
     "callable": "recoverSessionGoal",
     "resultType": "RecoveryReport",
     "skill": "recovery",

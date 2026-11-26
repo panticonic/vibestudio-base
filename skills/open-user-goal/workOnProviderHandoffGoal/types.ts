@@ -7,6 +7,7 @@ import type { ConversationReport as Delivery, DeliveryInput } from "./reviewReta
 
 export type ConversationCard = Card;
 export type ConversationRead = Read;
+export type ProviderHistory = {opening:ConversationRead;current:ConversationRead};
 export type ProviderGoalReport = Report & {
   reviews: { approval: ApprovalReviewEvidence; delivery: DeliveryReviewEvidence };
 };

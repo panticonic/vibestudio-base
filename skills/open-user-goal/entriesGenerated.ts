@@ -241,7 +241,7 @@ export default {
     "additionalArguments": {}
   },
   "editorial-packet": {
-    "program": "skills/open-user-goal/workOnEditorialPacket.ts",
+    "program": "skills/open-user-goal/workOnEditorialPacket.nl",
     "callable": "workOnEditorialPacket",
     "resultType": "EditorialPacketResult",
     "skill": "editorialPacket",
@@ -671,7 +671,7 @@ export default {
     "additionalArguments": {}
   },
   "provider-handoff": {
-    "program": "skills/open-user-goal/workOnProviderHandoffGoal.ts",
+    "program": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
     "callable": "workOnProviderHandoffGoal",
     "resultType": "ProviderResult",
     "skill": "providerHandoff",
@@ -1031,7 +1031,7 @@ export default {
     "additionalArguments": {}
   },
   "recovery": {
-    "program": "skills/open-session-recovery/program/recoverSessionGoal.ts",
+    "program": "skills/open-session-recovery/program/recoverSessionGoal.nl",
     "callable": "recoverSessionGoal",
     "resultType": "RecoveryReport",
     "skill": "recovery",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6b348990a5a997552203022cb3de3aed215a9f719f453f7eb3184b6b848aaefe"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"4e5599c227a871f426ff4bd8fdbffb76e86b892611e9fb55d055de640342cc8f"};
