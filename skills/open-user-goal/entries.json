@@ -290,7 +290,7 @@
     "additionalArguments": {}
   },
   "image-candidate": {
-    "program": "skills/open-user-goal/workOnImageCandidateGoal.ts",
+    "program": "skills/open-user-goal/workOnImageCandidateGoal.nl",
     "callable": "workOnImageCandidateGoal",
     "resultType": "ImageCandidateResult",
     "skill": "imageCandidate",
@@ -660,7 +660,7 @@
     "additionalArguments": {}
   },
   "dictation-handoff": {
-    "program": "skills/open-user-goal/workOnDictationHandoffGoal.ts",
+    "program": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
     "callable": "workOnDictationHandoffGoal",
     "resultType": "DictationResult",
     "skill": "dictationHandoff",

@@ -257,6 +257,27 @@
         "SpecialistEvidence",
         "SpecialistHandoffIntent"
       ]
+    },
+    "workOnImageCandidateGoal": {
+      "mounts": [
+        "workOnImageCandidateGoal/workspace"
+      ],
+      "types": [
+        "ImageCandidateResult",
+        "ImageReport",
+        "ImageInvestigation"
+      ]
+    },
+    "workOnDictationHandoffGoal": {
+      "mounts": [
+        "workOnDictationHandoffGoal/workspace",
+        "workOnDictationHandoffGoal/reviewRetainedDictation/dictation"
+      ],
+      "types": [
+        "DictationResult",
+        "DictationGoalReport",
+        "DictationInvestigation"
+      ]
     }
   },
   "workspaceModules": {
