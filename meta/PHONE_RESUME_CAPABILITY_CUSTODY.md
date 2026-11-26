@@ -1,0 +1,3 @@
+# Native phone resume capability
+
+PhoneFirstRunAssignment.setupRequest is null unless an actual current owned pairing grants the installed read-only resume capability. planPhoneFirstRun already distinguishes owned/foreign pairing and returns the requested finding. Its body now says to pass the actual non-null request rather than constructing an operation ID from a target label or another receipt; absence means explain the supported next step. This is authority/value custody, not a prescribed route. Header, signature, effects, services and task goals are unchanged. The whole26-world Native adapter controls are in the paired SST successor; original Source47 denied-read capture remains immutable.
