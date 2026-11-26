@@ -646,7 +646,7 @@ it("compiles the semantic function library with its installed research skill and
     goalDiscovery: ["investigatePublicQuestion.nl"],
     goalWorkspace: ["reviseWorkspaceDocument.nl", "answerWorkspaceQuestion.nl"],
     goalSuite: ["verifyWorkspaceSuite.ts"],
-    recoverySessions: ["recovery/recoverSessionGoal.ts"],
+    recoverySessions: ["recovery/recoverSessionGoal.nl"],
     recoveryReplay: ["recovery/recoverSessionGoal/readRecoveryWindows.nl"],
     recoveryHandoff: ["recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],
     testSuitePlanRead: ["reviewInstalledPackage/reviewVerification/nativeSuite/reviewTestSuite.nl", "verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
