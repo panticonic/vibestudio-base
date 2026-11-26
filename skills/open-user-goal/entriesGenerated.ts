@@ -271,7 +271,7 @@ export default {
     "additionalArguments": {}
   },
   "regency-briefing": {
-    "program": "skills/open-user-goal/workOnRegencyBriefing.ts",
+    "program": "skills/open-user-goal/workOnRegencyBriefing.nl",
     "callable": "workOnRegencyBriefing",
     "resultType": "RegencyResult",
     "skill": "regencyBriefing",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"1a40e00f1dfa7a20faf98c332df50510e90796b0ca3f8ea7aa880c785944a58d"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"518b45d7352249364acc2b4231ec3804689ad6dfead94058e65d26c0cb2a483b"};

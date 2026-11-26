@@ -270,7 +270,7 @@
     "additionalArguments": {}
   },
   "regency-briefing": {
-    "program": "skills/open-user-goal/workOnRegencyBriefing.ts",
+    "program": "skills/open-user-goal/workOnRegencyBriefing.nl",
     "callable": "workOnRegencyBriefing",
     "resultType": "RegencyResult",
     "skill": "regencyBriefing",

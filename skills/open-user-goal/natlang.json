@@ -422,7 +422,8 @@
       ],
       "types": [
         "RegencyReport",
-        "RegencyResult"
+        "RegencyResult",
+        "RegencyInvestigation"
       ]
     },
     "workOnNewsEvidenceGoal": {
