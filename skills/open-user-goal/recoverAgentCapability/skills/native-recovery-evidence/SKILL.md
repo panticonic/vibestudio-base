@@ -1,0 +1,7 @@
+# Native recovery evidence
+
+Resolve the actual interrupted or completed action from current owned notebook evidence and the user’s requested continuation. Let real failure, retained output, exact current approval and useful predecessor evidence inform what to inspect and how to continue. A saved effect must not be repeated. A visible console line is not durable completion. Confirm or retry only when requested and exactly authorized, using the typed native continuation and its actual feedback. Give truthful requested findings when permission is absent or the evidence remains incomplete.
+
+Investigate useful original action evidence for the actual requested notebook, step and revision. Distinguish a native admitted attempt, a durable settled value, console-only evidence, cancellation, current prerequisite and the exact approval. Inspect predecessor evidence when it helps establish the requested comparison or result lineage; similar notebook titles do not confer scope. Return actual assignment, acquired evidence and any semantic continuation finding, keeping uninspected values null rather than inventing a witness.
+
+Native authority, request intent and observed outcome are separate facts. Preserve current identifiers and version/digest preconditions at exact effect boundaries. A denied attempt is not a completed write; a proposed continuation is not a received result. Return the requested domain facts rather than claiming a later effect already occurred.

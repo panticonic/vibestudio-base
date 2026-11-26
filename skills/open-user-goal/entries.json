@@ -130,9 +130,9 @@
     "additionalArguments": {}
   },
   "cli-route": {
-    "program": "skills/open-user-goal/recoverCliRoute.ts",
+    "program": "skills/open-user-goal/recoverCliRoute.nl",
     "callable": "recoverCliRoute",
-    "resultType": "CliRouteOutcome",
+    "resultType": "CliRouteFindings",
     "skill": "cliRoute",
     "parameterNames": [
       "goal"
@@ -480,9 +480,9 @@
     "additionalArguments": {}
   },
   "same-turn-eval": {
-    "program": "skills/open-user-goal/recoverSameTurnEval.ts",
+    "program": "skills/open-user-goal/recoverSameTurnEval.nl",
     "callable": "recoverSameTurnEval",
-    "resultType": "SameTurnEvalOutcome",
+    "resultType": "SameTurnFindings",
     "skill": "sameTurnEval",
     "parameterNames": [
       "goal"
@@ -520,9 +520,9 @@
     "additionalArguments": {}
   },
   "content-archive": {
-    "program": "skills/open-user-goal/recoverContentArchive.ts",
+    "program": "skills/open-user-goal/recoverContentArchive.nl",
     "callable": "recoverContentArchive",
-    "resultType": "ContentArchiveOutcome",
+    "resultType": "ContentArchiveFindings",
     "skill": "contentArchive",
     "parameterNames": [
       "goal"
@@ -560,9 +560,9 @@
     "additionalArguments": {}
   },
   "agent-capability": {
-    "program": "skills/open-user-goal/recoverAgentCapability.ts",
+    "program": "skills/open-user-goal/recoverAgentCapability.nl",
     "callable": "recoverAgentCapability",
-    "resultType": "AgentCapabilityOutcome",
+    "resultType": "AgentRecoveryFindings",
     "skill": "agentCapability",
     "parameterNames": [
       "goal"

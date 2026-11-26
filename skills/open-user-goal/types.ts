@@ -489,7 +489,7 @@ export * from "./recoverContentArchive/contract.js";
 export * from "./reviewSystemRelease/contract.js";
 export type { PanelSourceMigrationOutcome } from "./migratePanelSource/types.js";
 export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
-export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
+export type { AgentRecoveryFindings } from "./recoverAgentCapability/types.js";
 export * from "./generateOwnedIllustration/contract.js";
 export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";
 export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";
@@ -548,3 +548,8 @@ export type { AssemblyReport } from "./workOnAssemblyGoal/types.js";
 
 // This closed board DTO has no optional workspace mount dependencies.
 export type { BoardMigrationOutcome, BoardInquiry } from "./reviewBoardMigration/types.js";
+
+export type {TurnRecoveryInquiry} from "./recoverSameTurnEval/types.js";
+
+export type {ArchiveRecoveryInquiry} from "./recoverContentArchive/types.js";
+export type {CapabilityRecoveryInquiry} from "./recoverAgentCapability/types.js";

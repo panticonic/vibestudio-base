@@ -210,7 +210,8 @@
         "recoverCliRoute/remote"
       ],
       "types": [
-        "CliRouteOutcome"
+        "CliRouteFindings",
+        "CliContinuationInquiry"
       ]
     },
     "workOnPersonalWelcomeGoal": {

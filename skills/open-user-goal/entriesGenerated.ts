@@ -131,9 +131,9 @@ export default {
     "additionalArguments": {}
   },
   "cli-route": {
-    "program": "skills/open-user-goal/recoverCliRoute.ts",
+    "program": "skills/open-user-goal/recoverCliRoute.nl",
     "callable": "recoverCliRoute",
-    "resultType": "CliRouteOutcome",
+    "resultType": "CliRouteFindings",
     "skill": "cliRoute",
     "parameterNames": [
       "goal"
@@ -481,9 +481,9 @@ export default {
     "additionalArguments": {}
   },
   "same-turn-eval": {
-    "program": "skills/open-user-goal/recoverSameTurnEval.ts",
+    "program": "skills/open-user-goal/recoverSameTurnEval.nl",
     "callable": "recoverSameTurnEval",
-    "resultType": "SameTurnEvalOutcome",
+    "resultType": "SameTurnFindings",
     "skill": "sameTurnEval",
     "parameterNames": [
       "goal"
@@ -521,9 +521,9 @@ export default {
     "additionalArguments": {}
   },
   "content-archive": {
-    "program": "skills/open-user-goal/recoverContentArchive.ts",
+    "program": "skills/open-user-goal/recoverContentArchive.nl",
     "callable": "recoverContentArchive",
-    "resultType": "ContentArchiveOutcome",
+    "resultType": "ContentArchiveFindings",
     "skill": "contentArchive",
     "parameterNames": [
       "goal"
@@ -561,9 +561,9 @@ export default {
     "additionalArguments": {}
   },
   "agent-capability": {
-    "program": "skills/open-user-goal/recoverAgentCapability.ts",
+    "program": "skills/open-user-goal/recoverAgentCapability.nl",
     "callable": "recoverAgentCapability",
-    "resultType": "AgentCapabilityOutcome",
+    "resultType": "AgentRecoveryFindings",
     "skill": "agentCapability",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"f9bc0dcc3e39b3a1f7f1a2fd382781e356ae9c501f4029c308d067863e4bdfd3"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"4b976fbda1b6090aa424d09afae40f55ef6a6911ebc69e6cce5a7f22643617ca"};

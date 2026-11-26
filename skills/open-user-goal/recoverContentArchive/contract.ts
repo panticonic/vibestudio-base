@@ -29,4 +29,4 @@ export type ContentArchiveReceipt = {
   workingRevision: string; application: { id: string; changes: string[] } | null;
   files: ContentArchiveWorkingFile[];
 };
-export type ContentArchiveOutcome = { action: ContentArchivePlan["action"]; reason: string; receipt: ContentArchiveReceipt | null };
+export type ContentArchiveFindings = { explanation:string; files:ContentArchiveWorkingFile[] };
