@@ -181,9 +181,9 @@ export default {
     "additionalArguments": {}
   },
   "examplesAdoption": {
-    "program": "skills/open-user-goal/reviewExamplesAdoption.ts",
+    "program": "skills/open-user-goal/reviewExamplesAdoption.nl",
     "callable": "reviewExamplesAdoption",
-    "resultType": "AdoptionOutcome",
+    "resultType": "string",
     "skill": "examplesAdoption",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6693817048d8a2c6a6492875c8773dc8f439db4f5a96a1273a3c6ef82544d13f"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"7913b533c1b6cce7a7553f5044b726f7068842a8b7e17ab86bd769007d431577"};
