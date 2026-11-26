@@ -11,4 +11,5 @@ export type RevisionReadback = {
 };
 
 
-export type CoordinatedRevisionResult = { status: "updated"|"unchanged"|"held"|"unavailable"; head: string; documents: {path:string;version:string}[]; explanation:string };
+/** Requested semantic answer and authentic current document values, without operational report echoes. */
+export type CoordinatedRevisionFindings = {answer:string|null;documents:RevisionFile[]};
