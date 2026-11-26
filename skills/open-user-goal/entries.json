@@ -80,7 +80,7 @@
     "additionalArguments": {}
   },
   "retained-memory": {
-    "program": "skills/open-user-goal/reviewRetainedMemory.ts",
+    "program": "skills/open-user-goal/reviewRetainedMemory.nl",
     "callable": "reviewRetainedMemory",
     "resultType": "MemoryResult",
     "skill": "retainedMemory",

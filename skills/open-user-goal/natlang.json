@@ -278,12 +278,22 @@
     "reviewRetainedMemory": {
       "mounts": [
         "reviewRetainedMemory/evidence",
-        "reviewRetainedMemory/chooseMemorySearch/provenance",
-        "reviewRetainedMemory/resolveMemoryEvidence/evidence"
+        "reviewRetainedMemory/investigateRetainedMemory/chooseMemorySearch/provenance"
       ],
       "types": [
-        "RetainedMemoryReport",
-        "MemoryResult"
+        "MemoryBrief",
+        "MemoryPlan",
+        "MemoryKind",
+        "MemoryLead",
+        "MemoryMessage",
+        "MemoryFile",
+        "MemoryEvidence",
+        "MemoryCitation",
+        "MemoryOutcome",
+        "MemoryNote",
+        "MemoryResult",
+        "MemoryReaders",
+        "MemoryInvestigation"
       ]
     },
     "reconcileWorkspaceConfig": {
@@ -513,8 +523,6 @@
     "reviseCoordinatedDocuments/planCoordinatedRevision/policy": "skills/workspace-document-revision",
     "reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy": "skills/workspace-document-revision",
     "reviewRetainedMemory/evidence": "skills/open-retained-memory",
-    "reviewRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation",
-    "reviewRetainedMemory/resolveMemoryEvidence/evidence": "skills/open-retained-memory",
     "discoverScopedIntent/workspace": "skills/open-intent-discovery",
     "discoverScopedIntent/searchRelevantIntent/workspace": "skills/open-intent-discovery",
     "chooseAuthorizedEvidenceRoute/workspace": "skills/open-route-authority",
@@ -609,6 +617,7 @@
     "correctVaultFromPdf/pdf": "skills/pdf-intake",
     "correctVaultFromPdf/vault": "skills/spectrolite-review",
     "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/workspace": "skills/open-specialist-handoff",
-    "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/inspectSpecialistPresence/agents": "skills/agents/channel-membership"
+    "workOnSpecialistHandoffGoal/reviewSpecialistCandidate/inspectSpecialistPresence/agents": "skills/agents/channel-membership",
+    "reviewRetainedMemory/investigateRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation"
   }
 }
