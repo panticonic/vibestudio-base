@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {expect,it,vi} from "vitest";
 import {observeInvocation} from "./observed-invocation.js";
 import {assessObservedApplicationOutcome} from "./observed-application-outcome.js";
-import {assessSemanticOutcome} from "./semantic-outcome-contract.js";
+import {assessSemanticOutcome,composeSemanticOutcomes} from "./semantic-outcome-contract.js";
 vi.mock("@vibestudio/content-addressing",()=>({sha256HexSyncText:(text:string)=>createHash("sha256").update(text).digest("hex")}));
 const definition={name:"actualApplication",source:"fixture/application.ts"};
 function recorded(value:unknown){
@@ -102,4 +102,40 @@ it("holds the bad item while retaining correct sibling judgments in typed array 
  expect(result.passed).toBe(true);
  expect(result.outcomeDimensions.returnedValue.incorrectReturns?.map(row=>row.definition.source)).toEqual(["compose.ts","qualify.nl"]);
  expect(result.outcomeDimensions.returnedValue.incorrectReturns?.[1]?.contribution).toMatchObject({producer_call_id:"bad",checks:["finding1"],candidates:[{call_id:"good"},{call_id:"bad"}]});
+});
+it("holds an optional format-only readout without inventing an incorrect observation",async()=>{
+ const value="an unverified incidental conclusion", rules={...optional,returnedValue:{...optional.returnedValue,trainingEvidence:"format-only" as const}};
+ const invocation=tree([{id:"root",parent:null,source:"coordinate.nl",kind:"agent",value},{id:"finding",parent:"root",source:"private/explain.nl",kind:"agent",value}]);
+ const result=await assessObservedApplicationOutcome({passed:true,checks:{nativeWrite:true,answer:true}},rules,value,invocation,[{checks:["answer"],rootPath:[],producerSourceSuffix:"private/explain.nl",producerPath:[]}]);
+ expect(result.passed).toBe(true);expect(result.observedChecks.answer).toBe(true);expect(result.outcomeDimensions.returnedValue.passed).toBe(true);
+ expect(result.incorrectReturnValues).toEqual([]);
+ expect(result.outcomeDimensions.returnedValue.unreviewedReturns).toMatchObject([{definition:{source:"coordinate.nl"},trainingEvidence:"format-only",required:false,contribution:{kind:"root"}},{definition:{source:"private/explain.nl"},contribution:{kind:"projection",lineage:["root","finding"]}}]);
+});
+it("keeps null, requested findings and independently checked optional receipts out of format-only holds",async()=>{
+ const valid={passed:true,checks:{nativeWrite:true,answer:true}}, rules={...optional,returnedValue:{...optional.returnedValue,trainingEvidence:"format-only" as const}};
+ for(const [value,contract] of [[null,rules],["requested",{...rules,returnedValue:{...rules.returnedValue,required:true}}],["native receipt",optional]] as const){
+  const result=await assessObservedApplicationOutcome(valid,contract,value,tree([{id:"root",parent:null,source:"root.nl",kind:"agent",value}]));
+  expect(result.passed).toBe(true);expect(result.outcomeDimensions.returnedValue.unreviewedReturns).toBeUndefined();
+ }
+});
+it("never fabricates a training hold against a mismatched actual root",async()=>{
+ const rules={...optional,returnedValue:{...optional.returnedValue,trainingEvidence:"format-only" as const}};
+ const result=await assessObservedApplicationOutcome({passed:true,checks:{nativeWrite:true,answer:true}},rules,"claimed",recorded("actual"));
+ expect(result.outcomeDimensions.returnedValue.unreviewedReturns).toBeUndefined();
+ expect(result.unboundReturnContributions).toMatchObject([{reason:"application-value-does-not-match-recorded-root"}]);
+});
+
+it("preserves an already bound optional readout hold through same-value re-assessment",async()=>{
+ const rules={...optional,returnedValue:{...optional.returnedValue,trainingEvidence:"format-only" as const}},value="unreviewed";
+ const first=await assessObservedApplicationOutcome({passed:true,checks:{nativeWrite:true,answer:true}},rules,value,tree([{id:"root",parent:null,source:"root.nl",kind:"agent",value}]));
+ const again=await assessObservedApplicationOutcome(first,rules,value);
+ expect(again.outcomeDimensions.returnedValue.unreviewedReturns).toEqual(first.outcomeDimensions.returnedValue.unreviewedReturns);
+ await expect(assessObservedApplicationOutcome(first,rules,"different")).rejects.toThrow(/Rebound unreviewed/);
+});
+
+it("permits a composed native effect when its observed optional return is actually null",async()=>{
+ const rules={...optional,returnedValue:{...optional.returnedValue,trainingEvidence:"format-only" as const}};
+ const observed=await assessObservedApplicationOutcome({passed:true,checks:{nativeWrite:true,answer:true}},rules,null,recorded(null));
+ expect(observed.unreviewedOptionalReturnPresent).toBe(false);
+ expect(composeSemanticOutcomes(observed).passed).toBe(true);
 });

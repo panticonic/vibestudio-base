@@ -22,10 +22,22 @@ export async function assessObservedApplicationOutcome<T extends {passed:boolean
 ){
  const observedChecks=semanticOutcomeObservations(verification);
  const failed=[...contract.returnedValue.checks,...contract.incidentalValues?.checks??[]].filter(name=>observedChecks[name]!==true);
+ const unchecked=(!contract.returnedValue.required && contract.returnedValue.trainingEvidence==="format-only" && actualValue!==null && actualValue!==undefined)?contract.returnedValue.checks.filter(name=>!failed.includes(name)):[];
+ const selected=[...failed,...unchecked];
  const required=(checks:readonly string[])=>contract.returnedValue.required&&checks.some(name=>contract.returnedValue.checks.includes(name));
  const incorrectReturnValues:{definition:{name:string;source:string};value:unknown;valueJson:string;required:boolean;contribution:ApplicationReturnWitness}[]=[];
+ const unreviewedReturnValues:{definition:{name:string;source:string};valueJson:string;contribution:ApplicationReturnWitness}[]=[];
  const unboundReturnContributions:{checks:readonly string[];reason:string}[]=[];
- if(failed.length&&invocation){
+ if(!invocation&&unchecked.length){
+  const prior=(verification as {unreviewedReturnValues?:typeof unreviewedReturnValues}).unreviewedReturnValues;
+  if(prior!==undefined&&!Array.isArray(prior))throw new Error("Unreviewed returns need their original value bindings");
+  for(const item of prior??[]){
+   if(!item.contribution||!isDeepStrictEqual(JSON.parse(item.contribution.root_value_json),actualValue)||item.contribution.checks.some(name=>!unchecked.includes(name)))
+    throw new Error("Rebound unreviewed return differs from the actual application value and source checks");
+   unreviewedReturnValues.push(item);
+  }
+ }
+ if(selected.length&&invocation){
   const calls=new Map(invocation.calls.map(call=>[call.callId,call]));
   const roots=await invocation.returns(call=>call.parentCallId===null);
   const root=roots.length===1&&isDeepStrictEqual(roots[0]!.value,actualValue)?roots[0]:undefined;
@@ -39,7 +51,9 @@ export async function assessObservedApplicationOutcome<T extends {passed:boolean
    };
    const add=(producer:ObservedReturn,kind:ApplicationReturnWitness["kind"],checks:readonly string[],rootPath:ReturnPath=[],producerPath:ReturnPath=[],chain:readonly ObservedCall[]=[root],extra:Partial<Pick<ApplicationReturnWitness,"producer_source_suffix"|"candidates"|"uncertainty">>={})=>{
     const contribution:ApplicationReturnWitness={schema:"natlang.application-return-contribution/1",kind,root_call_id:root.callId,producer_call_id:producer.callId,root_value_json:root.valueJson,root_sha256:sha256HexSyncText(root.valueJson),root_path:rootPath,producer_path:producerPath,checks,lineage:chain.map(call=>call.callId),...extra};
-    incorrectReturnValues.push({definition:producer.definition,value:producer.value,valueJson:producer.valueJson,required:required(checks),contribution});
+    const unreviewed=checks.filter(name=>unchecked.includes(name)),incorrect=checks.filter(name=>failed.includes(name));
+    if(incorrect.length)incorrectReturnValues.push({definition:producer.definition,value:producer.value,valueJson:producer.valueJson,required:required(incorrect),contribution:{...contribution,checks:incorrect}});
+    if(unreviewed.length)unreviewedReturnValues.push({definition:producer.definition,valueJson:producer.valueJson,contribution:{...contribution,checks:unreviewed}});
    };
    const independentChecks=new Set<string>();
    const prior=(verification as {incorrectReturnValues?:unknown}).incorrectReturnValues;
@@ -53,7 +67,7 @@ export async function assessObservedApplicationOutcome<T extends {passed:boolean
     add(producer,producer.callId===root.callId?"root":"incidental-child",item.checks,[],[],chain);
     for(const name of item.checks)independentChecks.add(name);
    }
-   const rootChecks=failed.filter(name=>!independentChecks.has(name));
+   const rootChecks=selected.filter(name=>!independentChecks.has(name));
    if(rootChecks.length)add(root,"root",rootChecks);
    // One child at every crisp step is a genuine unambiguous forwarding chain;
    // equal values in siblings or other branches are never an implicit witness.
@@ -67,11 +81,11 @@ export async function assessObservedApplicationOutcome<T extends {passed:boolean
     current=child;
    }
    for(const binding of contributions){
-    const checks=binding.checks.filter(name=>failed.includes(name));if(!checks.length)continue;
+    const checks=binding.checks.filter(name=>selected.includes(name));if(!checks.length)continue;
     const rootPart=project(root.value,binding.rootPath),candidates:ObservedReturn[]=[],eligible:ObservedReturn[]=[];
     for(const call of invocation.calls){
      if(call.callId===root.callId||call.outcome!=="done"||!sampled(call)||typeof call.definition.source!=="string"||!call.definition.source.endsWith(binding.producerSourceSuffix))continue;
-     const chain=lineage(call);if(!chain||chain.slice(0,-1).some(owner=>owner.execution?.kind!=="crisp"))continue;
+     const chain=lineage(call);if(!chain||!checks.every(name=>unchecked.includes(name))&&chain.slice(0,-1).some(owner=>owner.execution?.kind!=="crisp"))continue;
      const producer=await read(call);if(!producer)continue;eligible.push(producer);
      const part=project(producer.value,binding.producerPath??[]);
      if(rootPart.found&&part.found&&isDeepStrictEqual(rootPart.value,part.value))candidates.push(producer);
@@ -86,5 +100,6 @@ export async function assessObservedApplicationOutcome<T extends {passed:boolean
    }
   }else unboundReturnContributions.push({checks:failed,reason:"application-value-does-not-match-recorded-root"});
  }
- return assessSemanticOutcome({...verification,incorrectReturnValues,unboundReturnContributions},contract);
+ return assessSemanticOutcome({...verification,incorrectReturnValues,unreviewedReturnValues,unboundReturnContributions,
+  ...(!contract.returnedValue.required&&contract.returnedValue.trainingEvidence==="format-only"?{unreviewedOptionalReturnPresent:actualValue!==null&&actualValue!==undefined}:{})},contract);
 }
