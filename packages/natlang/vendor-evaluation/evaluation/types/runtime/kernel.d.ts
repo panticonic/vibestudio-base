@@ -57,6 +57,8 @@ export type CallableDefinition = {
     generic?: GenericResult;
     /** The instance this definition runs, once a call has instantiated its generic result (`instantiateDefinition`). */
     representation?: Representation;
+    /** Bound leading argument values from `fn.partial(...)`, hashed into Tier-1 JIT provenance keys. */
+    partialBindings?: readonly unknown[];
 };
 /** The representation a call asks for: from the compiler's annotation of its call site, or a host's `invokeAt`. */
 export type Instantiation = {

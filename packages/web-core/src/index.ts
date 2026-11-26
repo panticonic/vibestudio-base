@@ -29,6 +29,6 @@ export {
   type WebSearchQueryResult,
   type WebSearchResponse,
 } from "./contract.js";
-export { availableSearchProviders, selectSearchProvider, type CredentialPresenceProbe } from "./provider.js";
+export { createCredentialPresenceProbe, availableSearchProviders, selectSearchProvider, type CredentialPresenceProbe } from "./provider.js";
 export { searchDuckDuckGo, parseLiteResults, DuckDuckGoBlockedError } from "./duckduckgo.js";
 export type { ProviderName, SearchResult } from "./types.js";

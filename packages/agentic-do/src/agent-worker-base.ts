@@ -265,6 +265,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
       createWorkspaceServiceTool,
       createVerifyTool,
       createWebTools,
+      createCredentialPresenceProbe,
       createImagegenTool,
       authorNativeTool,
       createToolVcs,
@@ -495,18 +496,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           // Outside content drops this task's standing authority, so the next
           // gated operation asks the person again. Self-denial, decided by code.
           recordIngestion: (entry) => outsideContentReset.observe(entry.key),
-          hasCredentialForOrigin: async (origin) => {
-            try {
-              const credential = await toolRpc.call(
-                "main",
-                mainRpcMethods["credentials.resolveCredential"],
-                [{ url: origin }]
-              );
-              return credential != null;
-            } catch {
-              return false;
-            }
-          },
+          hasCredentialForOrigin:createCredentialPresenceProbe(origin=>toolRpc.call(
+            "main",mainRpcMethods["credentials.resolveCredential"],[{url:origin}]
+          )),
           searchBackend: configuredProviderId === "openai-codex" ? "codex" : "standard",
           resolveCodexSearchSession: resolveCodexSession,
         })

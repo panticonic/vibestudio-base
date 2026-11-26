@@ -1,0 +1,61 @@
+{
+  "inventoryBeforeEdits": true,
+  "observedNotCauseOfDDGFailure": true,
+  "sharedOwners": [
+    {
+      "path": "packages/web-core/src/provider.ts",
+      "role": "current source shared provider selection; new RPC probe wrapper here"
+    },
+    {
+      "path": "packages/runtime/src/shared/web.ts:36-41",
+      "role": "eval/panel/worker probe currently catches caller cancellation as false"
+    },
+    {
+      "path": "packages/agentic-do/src/agent-worker-base.ts:498-508",
+      "role": "agent native web tool same broad catch"
+    },
+    {
+      "path": "packages/web-core/src/search.ts:68-79",
+      "role": "without explicit AbortSignal, RPC-abandoned provider request currently becomes failover error"
+    },
+    {
+      "path": "packages/harness/src/standard-tools.ts",
+      "role": "agent already declared harness dependency; reexport common helper without new undeclared graph edge"
+    }
+  ],
+  "allRuntimeConsumers": [
+    "packages/runtime/src/shared/hostedRuntime.ts:389 uses shared createWebBinding for hosted/panel/worker Native facade",
+    "packages/harness/src/web/search.ts:282 delegates standard search, model-engine independent"
+  ],
+  "defaultPublishedFork": {
+    "source": "e4a56c7e69d637880b952f973c63910dc4c44444",
+    "present": [
+      "packages/agentic-do/src/agent-worker-base.ts:607 same broad catch",
+      "packages/harness/src/web/provider.ts owns older provider implementation",
+      "packages/harness/src/web/search.ts:305 owns older standard search"
+    ],
+    "absent": [
+      "packages/web-core directory doesnotexist",
+      "runtime/shared/web.ts absent; hostedRuntime.ts exportswebhooks, no sharedweb binding"
+    ],
+    "action": "minimal own successor, same canonical RPC cancellation helper; no private profile/SDK/Root imports or published receipt fabrication"
+  },
+  "preserve": [
+    "ordinary denied/unavailable credential can fall back to public search",
+    "provider-specific authorization and key audience",
+    "existing actual source provenance and errors",
+    "no model calls or network probes"
+  ],
+  "design": "Reuse canonical isRpcAborted; preserve exact caller abandonment at probe/fetch boundaries before any further provider request, shared helper consumed by both current wrappers. No classifier guess that every server error means cancellation.",
+  "verification": {
+    "current": "29 actual provider/search/runtime/TEST-only subscription controls PASS;231.5MiB peak",
+    "publishedDefault": "3 actual helper/TEST-only subscription controls PASS;225.1MiB peak",
+    "agentTools": "4 actual existing native-vessel Agent tool controls PASS;514.4MiB peak",
+    "projectionFailures": "First CJS Readability and SQL.js imports lost physical anchors in Vite projection; corrected test-only aliases/externalization, unchanged product. Original failures retained in service journals.",
+    "boundary": "No remote network/model requests. DDG bot refusal remains unchanged; explicit real Hub model-denial unchecked."
+  },
+  "subscriptionSearch": {
+    "current": "packages/harness/src/web/search.ts catch also preserves RPC_ABORTED without ambient AbortSignal",
+    "publishedDefault": "Same canonical catch corrected; standard default search already propagates native errors directly"
+  }
+}

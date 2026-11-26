@@ -330,7 +330,7 @@
     "additionalArguments": {}
   },
   "api-readiness": {
-    "program": "skills/open-user-goal/workOnApiReadinessGoal.ts",
+    "program": "skills/open-user-goal/workOnApiReadinessGoal.nl",
     "callable": "workOnApiReadinessGoal",
     "resultType": "ApiReadinessResult",
     "skill": "apiReadiness",

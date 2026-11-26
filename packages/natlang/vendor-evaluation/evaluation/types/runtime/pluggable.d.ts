@@ -23,6 +23,12 @@ export type PluggableOptions<R> = {
 /** The mode a setting names: `crisp`, `nl` or `shadow`; `natlang` and `natural-language` (deprecated) mean `nl`; absent means `fallback`. */
 export declare function pluggableMode(setting: unknown, fallback?: PluggableMode): PluggableMode;
 /**
+ * The natural-language side of a part whose caller supplies it (a `.nl` function, an agent call). `nl` and `shadow`
+ * run it, so under those modes a missing one is an error, never the crisp rule running under the natural-language name
+ * (which would make `shadow` agree with itself). Under `crisp` a missing one is a stub that is never called.
+ */
+export declare function suppliedNl<F extends (...args: never[]) => unknown>(nl: F | undefined, setting: PluggableSetting, fallback: PluggableMode, name: string): F;
+/**
  * The part as one function. `crisp` and `nl` run that implementation alone. `shadow` runs both on the same arguments
  * (concurrently), returns the served side's result, and records a `pluggable_shadow` trace event with both results and
  * `agree`, as `refinement_shadow` does for refinements. A failure of the side that is not served is recorded as a
