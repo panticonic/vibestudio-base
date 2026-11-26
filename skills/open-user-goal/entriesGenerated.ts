@@ -291,7 +291,7 @@ export default {
     "additionalArguments": {}
   },
   "image-candidate": {
-    "program": "skills/open-user-goal/workOnImageCandidateGoal.ts",
+    "program": "skills/open-user-goal/workOnImageCandidateGoal.nl",
     "callable": "workOnImageCandidateGoal",
     "resultType": "ImageCandidateResult",
     "skill": "imageCandidate",
@@ -311,7 +311,7 @@ export default {
     "additionalArguments": {}
   },
   "notificationState": {
-    "program": "skills/open-user-goal/reviewNotificationState.ts",
+    "program": "skills/open-user-goal/reviewNotificationState.nl",
     "callable": "reviewNotificationState",
     "resultType": "NotificationStateOutcome",
     "skill": "notificationState",
@@ -661,7 +661,7 @@ export default {
     "additionalArguments": {}
   },
   "dictation-handoff": {
-    "program": "skills/open-user-goal/workOnDictationHandoffGoal.ts",
+    "program": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
     "callable": "workOnDictationHandoffGoal",
     "resultType": "DictationResult",
     "skill": "dictationHandoff",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"4e5599c227a871f426ff4bd8fdbffb76e86b892611e9fb55d055de640342cc8f"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"1f05d389ec54dd63c8d54096ac0658d39b13f2650002df3bf3edba544cecb51f"};

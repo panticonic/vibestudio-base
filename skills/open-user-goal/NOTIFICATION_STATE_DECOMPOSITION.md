@@ -33,20 +33,22 @@ match the user's request.
   The actual account acknowledgment API remains scoped to its verified caller
   and acknowledges by ID.
 
-## Stages
+## Composition
 
-1. `locateNotificationLane` binds the user goal to the available owned scope
-   and requested notice. Natlang decides how notice references and prior context
-   identify a record, including when a reference stays ambiguous.
-2. `readNotificationLifecycle` obtains the initial projection, asks for a fresh
-   observation of the assigned retained change and reads the authorized current
-   state. The typed output preserves the actual observation and scope.
-3. `chooseNotificationAction` decides whether to acknowledge the exact current
-   revision, leave it pending, withhold because authority changed, or request
-   clarification. A nested callable evaluates the revision and history evidence.
-4. `finishNotificationReview` carries out a permitted exact acknowledgment if
-   requested and obtains authoritative post-action state. Natlang reports the
-   effect, retained count and attention count with source evidence. The private
-   verifier independently reads the fixture and checks SQLite facts against the
-   declared case outcome. Capture requires the exact call arguments, values and
-   receiver evidence, with hold, stale and unperformed variants checked.
+`reviewNotificationState.nl` owns the domain work. Its focused locating,
+lifecycle and decision branches retain a deeper finding lambda. Exact native
+acknowledgment/readback stays in `finishNotificationReview.ts`. The model can
+investigate actual changed or unavailable results without a verifier requiring
+a fixed actor-call multiset.
+
+The application value contains the actual finding, requested explanation and
+any real acknowledgment. Successful acknowledgment must not discard an
+explicitly requested confirmation. A known prior ID can identify a removed
+record without asserting that it still exists or may be acknowledged. Only
+native current scope/revision authorizes acknowledgment.
+
+Independent fixture checks preserve native producer refresh, exact account and
+revision, protected rows and requested acknowledgment effects. Bound meaning
+review judges requested findings and explanations from actual actor/native
+observations; private reference action/state/ID conventions are not answer
+gates. Every original literal goal, ID, seed and split remains intact.

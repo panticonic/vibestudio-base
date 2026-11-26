@@ -25,17 +25,18 @@ function compose(relative:string,mocks:Record<string,unknown>){
  },module,module.exports);
  return module.exports.default as (...args:any[])=>Promise<any>;
 }
-it("returns the actual notification decision or native acknowledgment and rereads after acknowledgment",async()=>{
+it("retains requested notification findings alongside actual native acknowledgment and reread",async()=>{
  const decision={action:"hold",finding:{id:null,revision:null},reason:"scope moved"};
  const acknowledge=vi.fn(async()=>({status:"acknowledged",id:"notice",revision:0})),read=vi.fn();
  const finish=compose("reviewNotificationState/finishNotificationReview.ts",{services:{notificationState:{acknowledge,read}}});
  const lifecycle={current:{lane:{id:"lane",generation:3}}};
- expect(await finish(lifecycle as any,decision as any)).toBe(decision);
+ expect(await finish(lifecycle as any,decision as any)).toEqual({finding:decision.finding,explanation:decision.reason,acknowledgment:null});
  expect(acknowledge).not.toHaveBeenCalled();
- const actual=await finish(lifecycle as any,{action:"acknowledge",finding:{id:"notice",revision:0}} as any);
+ const actual=await finish(lifecycle as any,{action:"acknowledge",finding:{id:"notice",revision:0},reason:"Only boundaries were cleared; contours remain pending"} as any);
  expect(acknowledge).toHaveBeenCalledWith(lifecycle.current.lane,"notice",0);
  expect(read).toHaveBeenCalledWith(lifecycle.current.lane);
- expect(actual.status).toBe("acknowledged");
+ expect(actual.acknowledgment.status).toBe("acknowledged");
+ expect(actual.explanation).toBe("Only boundaries were cleared; contours remain pending");
 });
 it("reconsiders a stale browser action from the actual new visible revision",async()=>{
  const old={revision:"old",rows:[{label:"Task",state:"pending",detail:"old",controls:[{id:"old-action"}]}]},current={revision:"current",rows:[{label:"Task",state:"pending",detail:"new",controls:[{id:"new-action"}]}]},done={revision:"done",rows:[{label:"Task",state:"done",detail:"saved",controls:[]}]};

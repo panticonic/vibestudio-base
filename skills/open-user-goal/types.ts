@@ -241,7 +241,11 @@ export type NotificationAcknowledgment = {
   status: "acknowledged" | "already-read" | "stale" | "unavailable";
   id: string; revision: number;
 };
-export type NotificationStateOutcome = NotificationAcknowledgment | NotificationDecision;
+export type NotificationStateOutcome = {
+  finding: NotificationFinding;
+  explanation: string;
+  acknowledgment: NotificationAcknowledgment | null;
+};
 
 export * from "./desktop-readiness-types.js";
 
@@ -493,7 +497,6 @@ export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
 export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
 export type { ChatContinuityReport } from "./workOnChatContinuity/types.js";
 export * from "./generateOwnedIllustration/contract.js";
-export type { ImageReport } from "./workOnImageCandidateGoal/types.js";
 export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";
 export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";
 export type { DeployedInterfaceOutcome } from "./reviewDeployedInterface/types.js";
@@ -520,7 +523,6 @@ export type { RecoveryHandoffOutcome, RecoveryHandoffDirective, RecoveryHandoffI
 
 export * from "./workOnProblemReportGoal/types.js";
 
-export type { DictationGoalReport } from "./workOnDictationHandoffGoal/types.js";
 
 
 export type ResearchRevision = { research: ResearchGoalReport; revision: WorkspaceEditReport | null };
@@ -536,7 +538,6 @@ export type { BridgeResult } from "./workOnBridgeDelivery/types.js";
 
 export type { ChatResult } from "./workOnChatContinuity/types.js";
 
-export type { ImageCandidateResult } from "./workOnImageCandidateGoal/types.js";
 
 export type { ApiReadinessResult } from "./workOnApiReadinessGoal/types.js";
 
@@ -545,7 +546,6 @@ export type { OwnedIllustrationResult } from "./generateOwnedIllustration/types.
 export type { DevelopmentAuditFindings } from "./reviewDevelopmentAudit/types.js";
 
 
-export type { DictationResult } from "./workOnDictationHandoffGoal/types.js";
 
 
 export type { TerminalResult } from "./workOnTerminalGoal/types.js";
