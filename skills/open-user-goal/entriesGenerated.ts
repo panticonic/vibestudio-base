@@ -571,7 +571,7 @@ export default {
     "additionalArguments": {}
   },
   "local-width": {
-    "program": "skills/open-user-goal/reviewLocalExecutionWidth.ts",
+    "program": "skills/open-user-goal/reviewLocalExecutionWidth.nl",
     "callable": "reviewLocalExecutionWidth",
     "resultType": "LocalWidthOutcome",
     "skill": "localWidth",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6688e599ceaaef19fc8a858741378d971bbbb9f9d4fb882c4247672ab5483a55"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"c64c821144db6a3340309f7ff612a9acd55d28cde0b1069fb7490cd73f76d246"};

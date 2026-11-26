@@ -570,7 +570,7 @@
     "additionalArguments": {}
   },
   "local-width": {
-    "program": "skills/open-user-goal/reviewLocalExecutionWidth.ts",
+    "program": "skills/open-user-goal/reviewLocalExecutionWidth.nl",
     "callable": "reviewLocalExecutionWidth",
     "resultType": "LocalWidthOutcome",
     "skill": "localWidth",
