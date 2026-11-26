@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "e404b1a8150df340d920374f64d22ea05c259fed",
+  "commit": "9a5a501782a26124ee4e3c2b651bfb1435621f52",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "81532ba0c49d8781c5a3978c8188d3d54d461d7142f1ffb4293bef517529ab14",
+    "workerd/natlang-workerd.js": "a78969fc1995b3e2d229120df77e410f95c31fef700bd1c5b9490e17605d31cb",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "1f708462cef03c1416be1ea4fc4a4e805abfcaca062277fb84a20508b8ad30a7",
@@ -72,7 +72,7 @@
     "workerd/types/native/refinement.d.ts": "612698175d9c8641c692c09f0c387b1f90b3d4a79f50bf27b9d0608cd5464945",
     "workerd/types/native/representation.d.ts": "c6b0029b95337b4778ed2c9565e3e0006b99de5c8a70840d844fdf284fad7dda",
     "workerd/types/native/return-errors.d.ts": "784a1c44b1bf20a2270240ecc43abf1e7f0ce3a097b226b8e9a6402698f32172",
-    "workerd/types/native/runtime.d.ts": "29ce5da6d348b9701e7d8bcbcffb1557103e2bf9dde07ad33690328ed40c1811",
+    "workerd/types/native/runtime.d.ts": "a4c6ad5744a7e8ff6169b628f42b0e7e22e7c504f5536777d2ebde23ddf0f7d4",
     "workerd/types/native/scoped-fs.d.ts": "6cee4a26d38a8de8157ce9bc2a9ed92029ebd7d8ece8b038862870016c8286fc",
     "workerd/types/native/system-prompts.d.ts": "3e10168d05d1dc331441eb2b5f124b1f483fdb8177fcd280e0c7ca205cc8bd74",
     "workerd/types/native/trace.d.ts": "915a063fb9fdea55a1b68c644ca12724a1c961e0c538aec0ab46977ffd40e3a4",
@@ -100,7 +100,7 @@
     "workerd/types/runtime/platform.d.ts": "f38205568f5239a43dcdb60d5cefe2736241c33e9e41fcba56f18d03ef2bc557",
     "workerd/types/runtime/pluggable.d.ts": "23b928272c8d48b916b6b008ef6f19010c71c6e71575cdd36b05409433e30c5d",
     "workerd/types/runtime/promotion.d.ts": "2e5948cd1f5a9439d288bd0051cfd0809728092d980ae3059ca554f564c5a565",
-    "workerd/types/runtime/runtime.d.ts": "6852e3b27b181a63a58b3cf86460c774bc8fe372485fd1e6564cc58735b56060",
+    "workerd/types/runtime/runtime.d.ts": "44f93626e5535797174052bff851620bcc736c962a21b81d8420cfa7c780c484",
     "workerd/types/runtime/selected-events.d.ts": "62c88b98e222a8d800d081733246216541b97e787ef467accbbdd47799952780",
     "workerd/types/runtime/surface.d.ts": "f5822e93275d8344dc9f6f80232845dc0c81889895af8390746307662b439094",
     "workerd/types/runtime/virtual-project.d.ts": "5805802b7d0c2af2d13732947089193373396012220be046e4d9bbdf28eea954"

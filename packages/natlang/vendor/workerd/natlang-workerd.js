@@ -222582,8 +222582,8 @@ var init_runtime_specifier = __esm({
 });
 
 // src/compiler/eval-check.ts
-function typeScriptText(natlang, known) {
-  if (natlang.includes("=>") && !natlang.includes("Live<")) {
+function typeScriptText(natlang, known, semantic = true) {
+  if (semantic && natlang.includes("=>") && !natlang.includes("Live<")) {
     try {
       return formatTypeScript(parseTypeCached(natlang));
     } catch {
@@ -222595,8 +222595,8 @@ function typeScriptText(natlang, known) {
   });
 }
 function importType(item, known) {
-  const params = item.params.map((parameter) => `${parameter.rest ? "..." : ""}${parameter.name}${parameter.optional ? "?" : ""}: ${typeScriptText(parameter.type, known)}`);
-  const returns = typeScriptText(item.returns, known);
+  const params = item.params.map((parameter) => `${parameter.rest ? "..." : ""}${parameter.name}${parameter.optional ? "?" : ""}: ${typeScriptText(parameter.type, known, item.kind !== "TypeScript")}`);
+  const returns = typeScriptText(item.returns, known, item.kind !== "TypeScript");
   const children2 = item.children.map((child) => `readonly ${child.name}: ${importType(child, known)}`);
   const members = children2.length ? ` & { ${children2.join("; ")} }` : "";
   if (item.kind === "module") return `{ ${children2.join("; ")} }`;
@@ -222607,7 +222607,7 @@ function importType(item, known) {
 function scopeDeclarations(scope, iterationHelper) {
   const known = new Set(Object.keys(scope.types));
   const lines = [];
-  for (const [name, text3] of Object.entries(scope.types)) lines.push(`type ${name} = ${typeScriptText(text3, known)};`);
+  for (const [name, text3] of Object.entries(scope.types)) lines.push(`type ${name} = ${typeScriptText(text3, known, !scope.typeScriptAliases?.includes(name))};`);
   for (const input of scope.inputs) lines.push(`declare const ${input.name}: ${typeScriptText(input.type, known)};`);
   for (const local of scope.locals) lines.push(`declare ${local.mutable ? "let" : "const"} ${local.name}: ${typeScriptText(local.type, known)};`);
   for (const capture of scope.captures) lines.push(`declare ${capture.mutable ? "let" : "const"} ${capture.name}: ${typeScriptText(capture.type, known)};`);
@@ -222768,6 +222768,20 @@ function checkEvalFields(source2, scope) {
       message: message2
     });
   };
+  const unawaited = /* @__PURE__ */ new Set();
+  const visitAwaited = (node) => {
+    if (scope.checkAwaitedFields !== false && (import_typescript15.default.isPropertyAccessExpression(node) || import_typescript15.default.isElementAccessExpression(node))) {
+      const receiver = checker.getNonNullableType(checker.getTypeAtLocation(node.expression));
+      const awaited = checker.getAwaitedType(receiver);
+      const name = import_typescript15.default.isPropertyAccessExpression(node) ? node.name.text : node.argumentExpression && (import_typescript15.default.isStringLiteral(node.argumentExpression) || import_typescript15.default.isNumericLiteral(node.argumentExpression)) ? node.argumentExpression.text : void 0;
+      if (awaited && awaited !== receiver && !(receiver.flags & (import_typescript15.default.TypeFlags.Any | import_typescript15.default.TypeFlags.Unknown)) && name !== void 0 && !checker.getPropertyOfType(receiver, name)) {
+        unawaited.add(node);
+        at(node, "undeclared-field", `${node.expression.getText(snippet)} is an unresolved Promise; await it before reading ${name === void 0 ? "a result field" : name}.`);
+      }
+    }
+    import_typescript15.default.forEachChild(node, visitAwaited);
+  };
+  visitAwaited(snippet);
   const isDecision = (node) => {
     const type = checker.getNonNullableType(checker.getTypeAtLocation(node));
     return ["value", "probabilities", "confidence", "scored"].every((name) => !!checker.getPropertyOfType(type, name));
@@ -222805,7 +222819,7 @@ function checkEvalFields(source2, scope) {
     if (diagnostic.code !== 2339 && diagnostic.code !== 2551 || diagnostic.start === void 0) continue;
     const name = findNode(snippet, diagnostic.start);
     const access = name?.parent;
-    if (!name || !access || !import_typescript15.default.isPropertyAccessExpression(access) || access.name !== name) continue;
+    if (!name || !access || !import_typescript15.default.isPropertyAccessExpression(access) || access.name !== name || unawaited.has(access)) continue;
     if (import_typescript15.default.isBinaryExpression(access.parent) && access.parent.left === access && access.parent.operatorToken.kind >= import_typescript15.default.SyntaxKind.FirstAssignment && access.parent.operatorToken.kind <= import_typescript15.default.SyntaxKind.LastAssignment) continue;
     const receiver = checker.getNonNullableType(checker.getTypeAtLocation(access.expression));
     if (RESERVED_CALLABLE_PROPERTIES.has(name.text) && receiver.getCallSignatures().length) continue;
@@ -232023,6 +232037,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         const run = runIdentity(options);
         this.options = {
           checkEvalBindings: options.checkEvalBindings,
+          checkAwaitedFields: options.checkAwaitedFields,
           maxActions: options.maxActions,
           maxToolCalls: options.maxToolCalls,
           runId: run.runId,
@@ -234634,7 +234649,7 @@ ${JSON.stringify(new TextDecoder("utf-8", { fatal: true }).decode(root2.readByte
         return "  // Binary file: use file.readBytes() before answering.";
       }
     })() : "";
-    return listingLine(field.name, formatType(field.type) + (field.optional ? " | undefined" : ""), shown) + opening;
+    return listingLine(field.name, formatTypeScript(field.type) + (field.optional ? " | undefined" : ""), shown) + opening;
   }).join("\n");
 }
 function sealedBudgets(items, total, render) {
@@ -234735,7 +234750,16 @@ function schemaOf(type, env, depth2 = 0) {
   };
   return {};
 }
-function referencedTypeAliases(signatures, definitions, declarations = {}, transitive = true) {
+function modelTypeSource(text3) {
+  if (!text3.includes("=>")) return text3;
+  try {
+    const doc = /^(\/\*\*[^]*?\*\/)\s*/.exec(text3);
+    return (doc?.[0] ?? "") + formatTypeScript(parseTypeCached(text3));
+  } catch {
+    return text3;
+  }
+}
+function referencedTypeAliases(signatures, definitions, declarations = {}, transitive = true, semantic = true) {
   const found = /* @__PURE__ */ new Set();
   const visit = (text3) => {
     for (const name of Object.keys(definitions)) {
@@ -234745,7 +234769,7 @@ function referencedTypeAliases(signatures, definitions, declarations = {}, trans
     }
   };
   for (const signature of signatures) visit(signature);
-  return [...found].map((name) => declarations[name] ?? aliasDeclaration(name, definitions[name]));
+  return [...found].map((name) => declarations[name] ?? aliasDeclaration(name, semantic ? modelTypeSource(definitions[name]) : definitions[name]));
 }
 function largeCallableScope(codebase) {
   const pending = Object.values(codebase);
@@ -235285,7 +235309,7 @@ ${notes}` : opening;
             const ref = await this.compactRef(session, {
               operator: "compact-params",
               value: text3,
-              instructions: argumentInstructions(field.name, formatType(field.type), this.purpose(session))
+              instructions: argumentInstructions(field.name, formatTypeScript(field.type), this.purpose(session))
             });
             if (ref) out2[field.name] = ref.$neuralese.id;
           }
@@ -235305,7 +235329,7 @@ ${notes}` : opening;
             text3 = void 0;
           }
           if (text3 === void 0 || value instanceof FileHandle) continue;
-          const instructions = listingViewInstructions(field.name, formatType(field.type), typeof lam.body === "string" ? lam.body.replace(/\n+$/, "") : "");
+          const instructions = listingViewInstructions(field.name, formatTypeScript(field.type), typeof lam.body === "string" ? lam.body.replace(/\n+$/, "") : "");
           const budget = this.options.modelBudget;
           const bounded = budget && (budget.maxRequests !== void 0 || budget.maxTokens !== void 0);
           let reservation;
@@ -236106,7 +236130,7 @@ ${notes}` : opening;
           formatType(lam.type.returns),
           ...writes ? [writes] : []
         ], lam.typesSrc, {}, !this.compactCallableScope(session));
-        const signature = `${lam.functionName || "run"}(` + lam.type.params.fields.map((field) => `${field.name}${field.optional ? "?" : ""}: ${formatType(field.type)}`).join(", ") + `): ${formatType(lam.type.returns)}`;
+        const signature = `${lam.functionName || "run"}(` + lam.type.params.fields.map((field) => `${field.name}${field.optional ? "?" : ""}: ${formatTypeScript(field.type)}`).join(", ") + `): ${formatType(lam.type.returns)}`;
         return { signature, scopeTypes, program, ...writes ? { writes } : {} };
       }
       compactCallableScope(session) {
@@ -236164,7 +236188,9 @@ ${notes}` : opening;
               if (!compact) for (const line of referencedTypeAliases(
                 [...Object.values(spec.args ?? {}), spec.returns ?? "", spec.type ?? ""],
                 raw.types ?? {},
-                raw.declarations ?? {}
+                raw.declarations ?? {},
+                true,
+                false
               )) aliases.add(line);
               entries.push(spec.kind === "function" ? `${propertyName(key)}: (${params(spec.args ?? {}).join(", ")}) => ${returns(spec)}` : `${propertyName(key)}: ${spec.type ?? "unknown"}`);
             }
@@ -236191,7 +236217,9 @@ ${notes}` : opening;
               if (!compact) for (const line of referencedTypeAliases(
                 [...Object.values(spec.args ?? {}), spec.returns ?? "", spec.type ?? ""],
                 types3,
-                raw.declarations ?? {}
+                raw.declarations ?? {},
+                true,
+                false
               )) aliases.add(line);
               if (exportName === "default") {
                 if (spec.kind === "function") lines.push(
@@ -236264,7 +236292,7 @@ ${notes}` : opening;
           if (body.length) lines.push(...lines.length ? [""] : [], heading, ...body);
         };
         const declared = (keyword, name, type, value, note2 = "", kind = "capture") => {
-          const shown = /^[a-z]+$/.test(type) && !["string", "number", "boolean", "null"].includes(type) ? "unknown" : type;
+          const shown = /^[a-z]+$/.test(type) && !["string", "number", "boolean", "null"].includes(type) ? "unknown" : modelTypeSource(type);
           const display = valueDisplay(session, sealed, kind, name);
           const expression = scopeExpression(
             value,
@@ -236284,7 +236312,7 @@ ${notes}` : opening;
         const params = lam.type.params.fields.map((field) => field.name);
         if (params.length) {
           names.push(...params);
-          section("// This call's arguments, as its caller gave them:", ["const inputs = read_inputs();", ...lam.type.params.fields.map((field) => `const ${field.name}: ${formatType(field.type)}${field.optional ? " | undefined" : ""} = inputs.${field.name};`)]);
+          section("// This call's arguments, as its caller gave them:", ["const inputs = read_inputs();", ...lam.type.params.fields.map((field) => `const ${field.name}: ${formatTypeScript(field.type)}${field.optional ? " | undefined" : ""} = inputs.${field.name};`)]);
         }
         section("// Variables of the calling code, captured by this call:", Object.values(lam.captures ?? {}).filter((cell) => !cell.skill && !isAdapterValue(capturedValue(cell))).flatMap((cell) => {
           let value;
@@ -237944,12 +237972,14 @@ function evalDeclarations(session, bindings2 = []) {
   const lam = session.lam;
   const codebase = lam.codebase;
   const types3 = { ...lam.typesSrc, ...session.analysisTypeAliases() };
-  const own = new Set(Object.keys(types3)), conflicting = /* @__PURE__ */ new Set();
+  const own = new Set(Object.keys(types3)), conflicting = /* @__PURE__ */ new Set(), typeScriptAliases = /* @__PURE__ */ new Set();
   const collect = (level) => {
     for (const record3 of Object.values(level)) {
       if ("types" in record3) for (const [name, text3] of Object.entries(record3.types)) {
-        if (!Object.hasOwn(types3, name)) types3[name] = text3;
-        else if (!own.has(name) && types3[name] !== text3) conflicting.add(name);
+        if (!Object.hasOwn(types3, name)) {
+          types3[name] = text3;
+          if (record3.kind === "module") typeScriptAliases.add(name);
+        } else if (!own.has(name) && types3[name] !== text3) conflicting.add(name);
       }
       collect(record3.codebase);
     }
@@ -237961,6 +237991,7 @@ function evalDeclarations(session, bindings2 = []) {
     inputs.push({ name: "folder", type: "Folder" });
   return {
     types: types3,
+    typeScriptAliases: [...typeScriptAliases],
     scopeIdentity: session.runtime.options.seedId ?? String(session.runtime.frame?.adHocDepth ?? 0),
     inputs,
     locals: Object.entries(lam.letTypes).filter(([name]) => Object.hasOwn(lam.let, name)).map(([name, type]) => ({ name, type: formatType(type), mutable: true })),
@@ -237972,6 +238003,7 @@ function evalDeclarations(session, bindings2 = []) {
     returns: lam.type.kind === "lambda" ? formatType(lam.type.returns) : void 0,
     globals: session.runtime.environment.globalBindings,
     checkUnknownBindings: session.runtime.options.checkEvalBindings,
+    checkAwaitedFields: session.runtime.options.checkAwaitedFields,
     std: session.evalStdBindings.filter((name) => !bindings2.includes(name)),
     // decide already has a typed intrinsic declaration; keep its decision-record checks.
     opaque: bindings2.filter((name) => name !== "decide" && !inputs.some((item) => item.name === name) && !Object.hasOwn(lam.let, name) && !Object.values(lam.captures ?? {}).some((cell) => cell.name === name) && !Object.hasOwn(codebase, name) && !Object.hasOwn(session.availableServices(), name))
@@ -240088,6 +240120,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       environment,
       hooks: kernelHooks,
       checkEvalBindings: task.runtime.options.checkEvalBindings,
+      checkAwaitedFields: task.runtime.options.checkAwaitedFields,
       agent: task.runtime.options.agent ?? (agent ? (session) => agent.run(session) : void 0),
       maxActions: limits.maxActions,
       maxToolCalls: limits.maxToolCalls,

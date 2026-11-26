@@ -60,6 +60,8 @@ export type NativeRuntimeOptions = {
     maxActions?: number;
     maxToolCalls?: number;
     checkEvalBindings?: boolean;
+    /** Check unresolved asynchronous values before reading their result fields (default true). */
+    checkAwaitedFields?: boolean;
     /**
      * The root call's ID: unique per run (it keys the call record, its children's parent link and the trace). Without one a
      * fresh `native-run:<uuid>` is used. `runLabel` is the logical name shared by runs of one kind (`curriculum-reference`),
@@ -195,6 +197,7 @@ export declare class NativeRuntime {
     readonly trace: NativeTraceRecorder;
     readonly options: {
         checkEvalBindings?: boolean;
+        checkAwaitedFields?: boolean;
         maxActions?: number;
         maxToolCalls?: number;
         runId: string;

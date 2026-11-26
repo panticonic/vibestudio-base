@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "e404b1a8150df340d920374f64d22ea05c259fed",
+  "commit": "9a5a501782a26124ee4e3c2b651bfb1435621f52",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -120,7 +120,7 @@
     "evaluation/types/native/refinement.d.ts": "612698175d9c8641c692c09f0c387b1f90b3d4a79f50bf27b9d0608cd5464945",
     "evaluation/types/native/representation.d.ts": "c6b0029b95337b4778ed2c9565e3e0006b99de5c8a70840d844fdf284fad7dda",
     "evaluation/types/native/return-errors.d.ts": "784a1c44b1bf20a2270240ecc43abf1e7f0ce3a097b226b8e9a6402698f32172",
-    "evaluation/types/native/runtime.d.ts": "29ce5da6d348b9701e7d8bcbcffb1557103e2bf9dde07ad33690328ed40c1811",
+    "evaluation/types/native/runtime.d.ts": "a4c6ad5744a7e8ff6169b628f42b0e7e22e7c504f5536777d2ebde23ddf0f7d4",
     "evaluation/types/native/scoped-fs.d.ts": "6cee4a26d38a8de8157ce9bc2a9ed92029ebd7d8ece8b038862870016c8286fc",
     "evaluation/types/native/system-prompts.d.ts": "3e10168d05d1dc331441eb2b5f124b1f483fdb8177fcd280e0c7ca205cc8bd74",
     "evaluation/types/native/tool-markup.d.ts": "f26159333ff435b6cbec0bbfda34a00ddd4b3cd8b8a6f41c54e19e26cfdbb11f",
@@ -161,7 +161,7 @@
     "evaluation/types/runtime/platform.d.ts": "f38205568f5239a43dcdb60d5cefe2736241c33e9e41fcba56f18d03ef2bc557",
     "evaluation/types/runtime/pluggable.d.ts": "23b928272c8d48b916b6b008ef6f19010c71c6e71575cdd36b05409433e30c5d",
     "evaluation/types/runtime/promotion.d.ts": "2e5948cd1f5a9439d288bd0051cfd0809728092d980ae3059ca554f564c5a565",
-    "evaluation/types/runtime/runtime.d.ts": "6852e3b27b181a63a58b3cf86460c774bc8fe372485fd1e6564cc58735b56060",
+    "evaluation/types/runtime/runtime.d.ts": "44f93626e5535797174052bff851620bcc736c962a21b81d8420cfa7c780c484",
     "evaluation/types/runtime/selected-events.d.ts": "62c88b98e222a8d800d081733246216541b97e787ef467accbbdd47799952780",
     "evaluation/types/runtime/surface.d.ts": "f5822e93275d8344dc9f6f80232845dc0c81889895af8390746307662b439094",
     "evaluation/types/runtime/target-arguments.d.ts": "d64d5e48fe21ca7d4b6c6a5af8a9fea99aa7431872fd2b679755faad21b84a77",

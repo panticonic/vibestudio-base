@@ -147,6 +147,8 @@ export type Services = Record<string, object>;
 export type NatlangRuntimeOptions = {
     /** Set false to retain legacy runtime-only handling of unknown eval names. Service scopes stay enforced. */
     checkEvalBindings?: boolean;
+    /** Check unresolved asynchronous values before reading their result fields (default true). */
+    checkAwaitedFields?: boolean;
     /** Account for speculative source edits in the current task. */
     onFolderProposal?: () => void;
     program?: ProgramDescriptor;
