@@ -442,7 +442,7 @@
   "provenance-question": {
     "program": "skills/open-user-goal/reviewRecordedQuestion.nl",
     "callable": "reviewRecordedQuestion",
-    "resultType": "RecordedQuestionReport",
+    "resultType": "RecordedQuestionFindings",
     "skill": "provenanceQuestion",
     "parameterNames": [
       "goal"

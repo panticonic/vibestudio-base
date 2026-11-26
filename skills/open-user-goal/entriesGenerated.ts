@@ -443,7 +443,7 @@ export default {
   "provenance-question": {
     "program": "skills/open-user-goal/reviewRecordedQuestion.nl",
     "callable": "reviewRecordedQuestion",
-    "resultType": "RecordedQuestionReport",
+    "resultType": "RecordedQuestionFindings",
     "skill": "provenanceQuestion",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"b4849bec997fdc9455030f55546eb3f5f26e7979c87ac6201abe7aa25d2d79b3"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"35221a7c1bbc37acf365149c6e5823f26ff04c1c190673d3db86ffcdd1c4d786"};

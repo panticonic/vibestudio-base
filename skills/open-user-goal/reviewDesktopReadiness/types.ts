@@ -1,1 +1,1 @@
-export * from "../desktop-readiness-types.js";
+export * from "../desktopReadinessTypes.js";
