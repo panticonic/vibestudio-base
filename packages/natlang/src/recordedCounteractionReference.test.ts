@@ -25,7 +25,7 @@ it('rejects the old cross-kind field before execution and preserves the actual r
  const services={recordedQuestionDiscovery:{discover:never,search:never},recordedQuestionGraph:{cohort:never,rejections:never}};
  const runtime=createEvalNatlang({newFunction:testNewFunction(),owner:{kind:'user',objectKey:'counteraction-reference-test'},bindings:{rpc,fs:{readFile:(p:string)=>readFile(join(base,p),'utf8'),readdir:(p:string)=>readdir(join(base,p),{withFileTypes:true}),stat:(p:string)=>stat(join(base,p))}}});
  try{
-  const result=await runtime.runCell(async()=>{const loader=runtime.ambient.natlang as {load(p:string,o:object):Promise<unknown>};const answer=await loader.load('skills/open-user-goal/reviewRecordedQuestion/answerRecordedQuestion.nl',{services}) as (...args:unknown[])=>Promise<unknown>;return answer(assignment,candidates,selection,evidence);},{runId:'counteraction-reference-test',signal:new AbortController().signal});
+  const result=await runtime.runCell(async()=>{const loader=runtime.ambient.natlang as {load(p:string,o:object):Promise<unknown>};const library=await loader.load('skills/open-user-goal',{services}) as {reviewRecordedQuestion:{answerRecordedQuestion:(...args:unknown[])=>Promise<unknown>}};const answer=library.reviewRecordedQuestion.answerRecordedQuestion;return answer(assignment,candidates,selection,evidence);},{runId:'counteraction-reference-test',signal:new AbortController().signal});
   expect(turns).toBe(2);expect(sawInvalidProperty).toBe(true);expect(nativeCalls).toBe(0);
   expect(result.value).toEqual({disposition:'caution',originalRationale:candidates[0]!.rationale,affected:['lighting/sampling.txt'],withdrawn:['lighting/sampling.txt'],reasons:[reason]});
  }finally{runtime.close();}
