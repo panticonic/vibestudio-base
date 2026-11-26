@@ -483,6 +483,34 @@
         "DictationGoalReport",
         "DictationInvestigation"
       ]
+    },
+    "workOnApiReadinessGoal": {
+      "mounts": [
+        "workOnApiReadinessGoal/workspace",
+        "workOnApiReadinessGoal/reviewQuietCredentials/installed"
+      ],
+      "types": [
+        "IntegrationUse",
+        "Destination",
+        "DestinationObservation",
+        "BoundReport",
+        "PublicDestination",
+        "Profile",
+        "QuietScope",
+        "IntegrationIndex",
+        "SelectionRow",
+        "SelectionFrontier",
+        "SelectionChoice",
+        "SelectionWitness",
+        "QuietRequest",
+        "LookupFact",
+        "QuietAudit",
+        "IntegrationReadinessPlan",
+        "ReadinessArtifact",
+        "ReadinessReport",
+        "ApiReadinessResult",
+        "IntegrationHistory"
+      ]
     }
   },
   "targets": {

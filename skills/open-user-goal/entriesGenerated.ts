@@ -331,7 +331,7 @@ export default {
     "additionalArguments": {}
   },
   "api-readiness": {
-    "program": "skills/open-user-goal/workOnApiReadinessGoal.ts",
+    "program": "skills/open-user-goal/workOnApiReadinessGoal.nl",
     "callable": "workOnApiReadinessGoal",
     "resultType": "ApiReadinessResult",
     "skill": "apiReadiness",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"1a40e00f1dfa7a20faf98c332df50510e90796b0ca3f8ea7aa880c785944a58d"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"a598e85932766f74c42e99d6d0eb01a370e424970552a7c16a47d098a4d2938f"};
