@@ -310,7 +310,7 @@
     "additionalArguments": {}
   },
   "notificationState": {
-    "program": "skills/open-user-goal/reviewNotificationState.ts",
+    "program": "skills/open-user-goal/reviewNotificationState.nl",
     "callable": "reviewNotificationState",
     "resultType": "NotificationStateOutcome",
     "skill": "notificationState",

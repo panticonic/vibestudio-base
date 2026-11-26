@@ -311,7 +311,7 @@ export default {
     "additionalArguments": {}
   },
   "notificationState": {
-    "program": "skills/open-user-goal/reviewNotificationState.ts",
+    "program": "skills/open-user-goal/reviewNotificationState.nl",
     "callable": "reviewNotificationState",
     "resultType": "NotificationStateOutcome",
     "skill": "notificationState",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"77eb5fb4ee1fa59ce02079c85d18c0e47434dd41966ceca50e7b9f02f0064702"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"98d72dfeb2b21a2a69916f194cf848bcfd0cc9f24a5c61159516f799ee901d29"};

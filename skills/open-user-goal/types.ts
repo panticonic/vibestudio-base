@@ -241,7 +241,11 @@ export type NotificationAcknowledgment = {
   status: "acknowledged" | "already-read" | "stale" | "unavailable";
   id: string; revision: number;
 };
-export type NotificationStateOutcome = NotificationAcknowledgment | NotificationDecision;
+export type NotificationStateOutcome = {
+  finding: NotificationFinding;
+  explanation: string;
+  acknowledgment: NotificationAcknowledgment | null;
+};
 
 export type DesktopDesk = { id: string; name: string; operationId: string };
 export type DesktopPane = { id: string; panelId: string; heightFr: number; minWidthOverride?: number };
