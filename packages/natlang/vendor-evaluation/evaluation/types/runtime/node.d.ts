@@ -50,6 +50,7 @@ export declare const __natlang: Readonly<{
     selectedService(name: string): object;
     uncompiled(): never;
     guard: typeof import("./context.js").guard;
+    own: typeof import("./context.js").own;
     readNeuralese: typeof import("../neuralese/combinators.js").readNeuraleseForCurrentTask;
     importedNativeArtifacts: typeof import("./index.js").importedNativeArtifacts;
 }>, createNatlangRuntime: (options?: NatlangRuntimeOptions) => import("./runtime.js").NatlangRuntime, compileVirtualProject: (project: import("./virtual-project.js").VirtualProject, runtime: Record<string, unknown>, options?: Omit<import("./virtual-project.js").VirtualProjectOptions, "platform"> & {

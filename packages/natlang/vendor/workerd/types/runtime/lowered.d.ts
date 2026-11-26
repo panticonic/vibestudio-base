@@ -13,6 +13,7 @@ import type { CallableDefinition } from './kernel.js';
 import { importedNativeArtifacts } from '../native/nz-file.js';
 import { readNeuraleseForCurrentTask } from '../neuralese/combinators.js';
 export { guard };
+export { own } from './context.js';
 /**
  * Compiler target for a call the compiler marked as part of a possible hand-off between named functions (compiler/call-flow.ts
  * `fusionCallSites`). The arguments are already evaluated. With fusion off (no `fusion` runtime option) this is the call.

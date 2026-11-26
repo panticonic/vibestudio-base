@@ -213281,14 +213281,14 @@ function mapChildTypes(type, child) {
   }
 }
 function signatureFits(signature, wanted, env) {
-  const own = signature.types;
-  const foreign = new Set(Object.keys(own).filter((name) => {
+  const own2 = signature.types;
+  const foreign = new Set(Object.keys(own2).filter((name) => {
     const there = env.lookup(name);
-    return there !== void 0 && JSON.stringify(there) !== JSON.stringify(own[name]);
+    return there !== void 0 && JSON.stringify(there) !== JSON.stringify(own2[name]);
   }));
-  if (!foreign.size) return fitsType(signature.type, wanted, env.child({ ...own }));
+  if (!foreign.size) return fitsType(signature.type, wanted, env.child({ ...own2 }));
   const rename = (name) => foreign.has(name) ? `${name}\0signature` : name;
-  const names = Object.fromEntries(Object.entries(own).map(([name, type]) => [rename(name), renameTypeNames(type, rename)]));
+  const names = Object.fromEntries(Object.entries(own2).map(([name, type]) => [rename(name), renameTypeNames(type, rename)]));
   return fitsType(renameTypeNames(signature.type, rename), wanted, env.child(names));
 }
 function refinementChain(type, env) {
@@ -214001,6 +214001,17 @@ function runInFrame(frame, fn) {
   if (stores.length > 1) entered.set(frame, ++sequence);
   return frame.task.runtime.platform.contextStore.run(frame, fn);
 }
+function own(fn) {
+  const frame = currentFrame(), owner = frame?.nativeEffects;
+  owner?.assertLive();
+  const value = fn();
+  if (owner?.enabled && value !== null && (typeof value === "object" || typeof value === "function") && typeof value.then === "function") {
+    const pending = Promise.resolve(value);
+    owner.track(pending);
+    frame.task.track(pending);
+  }
+  return value;
+}
 function guard(id3, fn, args = [], label) {
   const frame = currentFrame();
   if (!frame) return fn();
@@ -214014,7 +214025,7 @@ function guard(id3, fn, args = [], label) {
       throw new NatlangRecursionError(id3, frame.chain, name, noSmallerArgument(name));
     }
   }
-  return runInFrame({ ...frame, active: { id: id3, args, parent: frame.active, same, descent } }, fn);
+  return own(() => runInFrame({ ...frame, active: { id: id3, args, parent: frame.active, same, descent } }, fn));
 }
 function descend(previous, args) {
   const candidates = previous.descent ?? Array.from(
@@ -215222,7 +215233,7 @@ function argumentsKey(method, args) {
   });
   return plain3 ? text3 : void 0;
 }
-function recordingServices(services, emit3, authority, scope) {
+function recordingServices(services, emit3, authority, scope, owner) {
   const source2 = unrecordedServices(authority ?? services);
   if (!authority) services = source2;
   const preview4 = (value) => {
@@ -215249,6 +215260,13 @@ function recordingServices(services, emit3, authority, scope) {
         if (typeof value === "function") {
           const recorded2 = (...given) => {
             const observe = currentObserver(scope, emit3);
+            const frame = currentFrame();
+            const authenticated = scope && frame && (frame.task === scope.task || scope.task.runtime.callStore() && scope.task.runtime.callStore() === frame.task.runtime.callStore());
+            const effects = authenticated ? frame.nativeEffects ?? owner : owner;
+            effects?.assertLive();
+            const kind = Object.getOwnPropertyDescriptor(value, /* @__PURE__ */ Symbol.for("natlang.native-call-kind"))?.value ?? (Object.getPrototypeOf(value)?.constructor?.name === "AsyncFunction" ? "promise" : void 0);
+            if (effects?.enabled && !effects.allowsAsync && kind === "promise")
+              throw new NatlangContextError("A synchronous native entry cannot start asynchronous Native I/O; return and await an async entry.");
             const args = given.map((item) => hostCopy(item));
             const sink = observe ?? emit3;
             const seq = observerSequences.get(sink) ?? 0;
@@ -215256,8 +215274,8 @@ function recordingServices(services, emit3, authority, scope) {
             observe?.({ phase: "requested", service: label, method: property, args: preview4(args), seq, exact: { args } });
             try {
               const result = invokeServiceMethod(object2, property, value, args);
-              if (result && typeof result.then === "function")
-                return Promise.resolve(result).then(
+              if (result && typeof result.then === "function") {
+                const pending = Promise.resolve(result).then(
                   async (resolved) => {
                     await observe?.({
                       phase: "completed",
@@ -215274,6 +215292,10 @@ function recordingServices(services, emit3, authority, scope) {
                     throw error;
                   }
                 );
+                effects?.track(pending);
+                if (scope && effects?.enabled) scope.task.track(pending);
+                return pending;
+              }
               observe?.({ phase: "completed", service: label, method: property, result: preview4(result), seq, exact: { result, async: false } });
               return result;
             } catch (error) {
@@ -215309,13 +215331,43 @@ function recordingServices(services, emit3, authority, scope) {
   Object.defineProperty(wrapped, RECORDED, { value: true });
   return Object.freeze(wrapped);
 }
-var serviceObservers, observerSequences, RECORDED, isRecording, recordingSources, recordingPorts, selectedSurfaces, ONCE_EFFECTS, onceResults, resultCheckedPorts;
+var NativeEffectOwner, serviceObservers, observerSequences, RECORDED, isRecording, recordingSources, recordingPorts, selectedSurfaces, ONCE_EFFECTS, onceResults, resultCheckedPorts;
 var init_effects = __esm({
   "src/native/effects.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_values();
     init_context();
+    NativeEffectOwner = class {
+      constructor(enabled3 = true, allowsAsync = true) {
+        this.enabled = enabled3;
+        this.allowsAsync = allowsAsync;
+      }
+      enabled;
+      allowsAsync;
+      pending = /* @__PURE__ */ new Set();
+      closed = false;
+      assertLive() {
+        if (this.enabled && this.closed) throw new NatlangContextError("The invocation that owns this native operation has finished.");
+      }
+      track(promise) {
+        if (!this.enabled) return promise;
+        this.assertLive();
+        this.pending.add(promise);
+        promise.finally(() => this.pending.delete(promise)).catch(() => {
+        });
+        return promise;
+      }
+      get hasPending() {
+        return this.pending.size > 0;
+      }
+      async drain() {
+        while (this.pending.size) await Promise.allSettled([...this.pending]);
+      }
+      close() {
+        this.closed = true;
+      }
+    };
     serviceObservers = /* @__PURE__ */ new WeakMap();
     observerSequences = /* @__PURE__ */ new WeakMap();
     RECORDED = /* @__PURE__ */ Symbol("natlang.recorded-services");
@@ -217879,8 +217931,8 @@ function ownDeclarations(node) {
 function assignedIdentifiers(node) {
   const names = /* @__PURE__ */ new Set();
   const visit = (child, shadowed) => {
-    const own = ownDeclarations(child);
-    if (own.length) shadowed = /* @__PURE__ */ new Set([...shadowed, ...own]);
+    const own2 = ownDeclarations(child);
+    if (own2.length) shadowed = /* @__PURE__ */ new Set([...shadowed, ...own2]);
     let target;
     if (import_typescript8.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript8.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript8.default.SyntaxKind.LastAssignment) target = child.left;
     if ((import_typescript8.default.isPrefixUnaryExpression(child) || import_typescript8.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript8.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript8.default.SyntaxKind.MinusMinusToken)) target = child.operand;
@@ -220268,13 +220320,13 @@ function readNatlangFrontmatter(source2) {
       let entry;
       const indent = body[0]?.match(/^\s*/)[0].length ?? 0;
       for (const line of body) {
-        const own = line.match(/^\s*/)[0].length;
-        const named2 = own === indent ? /^\s*([A-Za-z_$][\w$]*\??)\s*:(.*)$/.exec(line) : null;
+        const own2 = line.match(/^\s*/)[0].length;
+        const named2 = own2 === indent ? /^\s*([A-Za-z_$][\w$]*\??)\s*:(.*)$/.exec(line) : null;
         if (named2) {
           entry = named2[1];
           if (entry in map) throw new Error(`${key} repeats ${entry}`);
           map[entry] = named2[2].trim();
-        } else if (entry && own > indent) map[entry] += " " + line.trim();
+        } else if (entry && own2 > indent) map[entry] += " " + line.trim();
         else throw new Error(`${key}: expected \`name: type\` on each indented line, got ${JSON.stringify(line.trim())}`);
       }
       for (const name of Object.keys(map)) {
@@ -221855,7 +221907,7 @@ function natlangTransformer(options) {
   return (context) => (file) => {
     const f = context.factory;
     const runtime = (name) => f.createPropertyAccessExpression(f.createIdentifier(options.runtime), name);
-    const authored = options.constrained ? authoredCallables(file, options.guardPrefix) : [];
+    const authored = authoredCallables(file, options.guardPrefix);
     const guardIds = new Map(authored.map((callable) => [callable.node, callable.id]));
     const siteCounts = /* @__PURE__ */ new Map();
     const siteId = (node) => {
@@ -222489,7 +222541,7 @@ function natlangTransformer(options) {
         );
       }
       const guardId = guardIds.get(source2);
-      if (guardId && (import_typescript14.default.isFunctionDeclaration(node) || import_typescript14.default.isFunctionExpression(node) || import_typescript14.default.isArrowFunction(node) || import_typescript14.default.isMethodDeclaration(node) || import_typescript14.default.isGetAccessorDeclaration(node) || import_typescript14.default.isSetAccessorDeclaration(node)) && node.body && makesCalls(source2)) {
+      if (guardId && (import_typescript14.default.isFunctionDeclaration(node) || import_typescript14.default.isFunctionExpression(node) || import_typescript14.default.isArrowFunction(node) || import_typescript14.default.isMethodDeclaration(node) || import_typescript14.default.isGetAccessorDeclaration(node) || import_typescript14.default.isSetAccessorDeclaration(node)) && node.body && !("asteriskToken" in node && node.asteriskToken) && makesCalls(source2)) {
         const visited = import_typescript14.default.visitEachChild(node, visit, context);
         const isAsync = !!visited.modifiers?.some((modifier) => modifier.kind === import_typescript14.default.SyntaxKind.AsyncKeyword) || options.arrayMapCallbacks?.has(`${source2.getStart(source2.getSourceFile())}:${source2.getEnd()}`) === true;
         const body = visited.body;
@@ -222502,7 +222554,7 @@ function natlangTransformer(options) {
           import_typescript14.default.isBlock(body) ? body : f.createParenthesizedExpression(body)
         );
         const args = f.createArrayLiteralExpression(guardArguments(source2).map((name) => name === "this" ? f.createThis() : f.createIdentifier(name)));
-        const guarded = f.createCallExpression(runtime("guard"), void 0, [f.createStringLiteral(guardId), inner, args]);
+        const guarded = options.constrained ? f.createCallExpression(runtime("guard"), void 0, [f.createStringLiteral(guardId), inner, args]) : f.createCallExpression(runtime("own"), void 0, [inner]);
         const block = f.createBlock([f.createReturnStatement(guarded)], true);
         if (import_typescript14.default.isFunctionDeclaration(visited)) return f.updateFunctionDeclaration(
           visited,
@@ -222667,8 +222719,8 @@ function serviceNamespace(name, declaration) {
   const namespace = /^\s*declare (?:namespace|const) /.test(body) ? body.trim() : `declare namespace ${name} {
 ${body.replace(/^(\s*export\s+)declare\s+/gm, "$1")}
 }`;
-  const own = new RegExp(`^\\s*export\\s+(?:declare\\s+)?const\\s+${name}\\s*:`, "m");
-  if (!namespace.startsWith(`declare namespace ${name} `) || !own.test(namespace)) return namespace;
+  const own2 = new RegExp(`^\\s*export\\s+(?:declare\\s+)?const\\s+${name}\\s*:`, "m");
+  if (!namespace.startsWith(`declare namespace ${name} `) || !own2.test(namespace)) return namespace;
   const types3 = `__natlang_service_${name}`;
   return `${namespace.replace(`declare namespace ${name} `, `declare namespace ${types3} `)}
 declare const ${name}: typeof ${types3}.${name};`;
@@ -223560,12 +223612,12 @@ var init_refinement = __esm({
       settings;
       crisp;
       settingsFor(predicate) {
-        const own = this.settings.predicates?.[predicate], global2 = this.settings;
+        const own2 = this.settings.predicates?.[predicate], global2 = this.settings;
         return {
-          threshold: own?.threshold ?? global2.threshold ?? 0.5,
-          ...own?.band ?? global2.band ? { band: own?.band ?? global2.band } : {},
-          policy: own?.policy ?? global2.policy ?? "reject",
-          mode: own?.mode ?? global2.mode ?? "crisp"
+          threshold: own2?.threshold ?? global2.threshold ?? 0.5,
+          ...own2?.band ?? global2.band ? { band: own2?.band ?? global2.band } : {},
+          policy: own2?.policy ?? global2.policy ?? "reject",
+          mode: own2?.mode ?? global2.mode ?? "crisp"
         };
       }
       /** The repairs an executor gets for a rejected refined return, given the model's own repair limit. */
@@ -226810,7 +226862,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       const at = rel(node);
       primitive.push(
         { start: at.start, end: at.start, text: "__natlang_own((", owner: at },
-        { start: at.end, end: at.end, text: "))", owner: at }
+        { start: at.end, end: at.end, text: promiseConstruction ? "), false)" : "))", owner: at }
       );
     }
     if (instance && import_typescript19.default.isCallExpression(node)) {
@@ -227046,12 +227098,11 @@ const read = __live.readNeuralese;
 const __natlang_output = (value: unknown) => { __live.finish(value); return null; };
 const __natlang_thenable = (value: any) => !!value && (typeof value === 'object' || typeof value === 'function') &&
   typeof value.then === 'function';
-// Eval owns async work started by its code. Attach a rejection observer without replacing the
-// promise: callers that await it still receive the original rejection and identity checks keep
-// working, while a deliberately dropped authored async call cannot become a process-level
-// unhandled rejection (notably when a later guarded recursive call rejects).
-const __natlang_own = <T>(value: T): T => {
-  if (value instanceof Promise) void value.catch(() => {});
+// Eval owns async function calls started by its code. Preserve promise identity and
+// observe rejection; the host joins logical child work before committing the action.
+// Merely constructing an unresolved Promise does not start work and is not joined.
+const __natlang_own = <T>(value: T, started = true): T => {
+  if (value instanceof Promise) { void value.catch(() => {}); if (started) __live.own?.(value); }
   return value;
 };
 const __natlang_pending = (value: any, depth = 0): boolean => __natlang_thenable(value) || depth < 4 &&
@@ -229665,22 +229716,22 @@ function validateSource(result, artifact, text3, info) {
   for (const name of ["checkpoint_sha256", "tokenizer_fingerprint", "embedding_weight_sha256", "architecture"])
     if (source2.policy[name] !== artifact.metadata[name])
       return failure("neuralese-native-source-integrity", `source ${name} differs from the captured artifact`);
-  const own = [], roles = [];
+  const own2 = [], roles = [];
   for (const segment of source2.segments) {
     if (segment.kind === "tokens") {
       if (!Array.isArray(segment.token_ids) || !Array.isArray(segment.producing) || segment.token_ids.length !== segment.producing.length || segment.token_ids.some((token) => !Number.isSafeInteger(token) || token < 0) || segment.producing.some((role) => typeof role !== "boolean"))
         return failure("neuralese-native-source-integrity", "source token IDs and producing flags disagree");
-      for (const token of segment.token_ids) own.push(token);
+      for (const token of segment.token_ids) own2.push(token);
       for (const role of segment.producing) roles.push(role);
     } else if (segment.kind !== "native_state" || !/^nzs1_[a-z2-7]{52}$/.test(segment.id))
       return failure("neuralese-native-source-integrity", "source capture contains an invalid native import");
   }
   const start = source2.payload_start, stop = source2.payload_stop;
   const markers = info.native_state.role_marker_ids;
-  if (!Array.isArray(markers) || markers.length !== 4 || own[start - 1] !== markers[0] || own[stop] !== markers[1] || roles[start - 1] !== false || roles[stop] !== false)
+  if (!Array.isArray(markers) || markers.length !== 4 || own2[start - 1] !== markers[0] || own2[stop] !== markers[1] || roles[start - 1] !== false || roles[stop] !== false)
     return failure("neuralese-native-source-integrity", "native producer must include actual ordinary-role beginning and end markers around its payload");
   const ids = artifact.tensors.token_ids, view = new DataView(ids.data.buffer, ids.data.byteOffset, ids.data.byteLength);
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(stop) || start < 0 || stop < start || stop > own.length || stop - start !== ids.shape[0] || roles.slice(start, stop).some((role) => !role) || own.slice(start, stop).some((token, index) => BigInt(token) !== view.getBigInt64(index * 8, true)))
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(stop) || start < 0 || stop < start || stop > own2.length || stop - start !== ids.shape[0] || roles.slice(start, stop).some((role) => !role) || own2.slice(start, stop).some((token, index) => BigInt(token) !== view.getBigInt64(index * 8, true)))
     return failure("neuralese-native-source-integrity", "captured payload tokens do not match the actual producer source span");
 }
 async function nativeTextOperation(options, operation, body) {
@@ -232087,6 +232138,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
     runSeedKey = (options) => options.seedId ?? options.runLabel ?? options.runId;
     NativeRuntime = class {
       events = [];
+      nativeEffects;
       trace;
       options;
       seedPolicy;
@@ -232109,6 +232161,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
       deadline;
       exactHostTraceCapture;
       constructor(options) {
+        this.nativeEffects = options.frame?.nativeEffects ?? new NativeEffectOwner(options.settleNativeEffects !== false);
         this.displayLiveId = options.frame ? scopedLiveIdentity(options.frame.task) : createLiveIdentity();
         this.untrusted = options.frame ? scopedUntrusted(options.frame.task) : new UntrustedRegistry(hostUntrusted);
         const run = runIdentity(options);
@@ -232156,8 +232209,8 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
           if (event.phase === "requested") this.trace.emit("effect", { call_id: this.currentCallId ?? null, capability: `${event.service}.${event.method}`, ...event });
           else graphNode(this.trace, "effect", { call_id: this.currentCallId ?? null, capability: `${event.service}.${event.method}`, ...event }, [{ node: invocationNodeId(this.options.runId), port: "caller" }]);
           return persisted;
-        }, void 0, options.frame ? { task: options.frame.task, callId: options.frame.parentCallId } : void 0);
-        this.frame = options.frame ? { ...options.frame, services: this.services } : void 0;
+        }, void 0, options.frame ? { task: options.frame.task, callId: options.frame.parentCallId } : void 0, this.nativeEffects);
+        this.frame = options.frame ? { ...options.frame, nativeEffects: this.nativeEffects, services: this.services } : void 0;
         this.declarations = options.declarations ?? {};
         this.neuralese = options.neuralese;
         this.serviceScopes = options.serviceScopes ?? {};
@@ -233501,12 +233554,12 @@ ${declaration}`;
           }
           const stem = /^(?:\.\/)?(.+?)(?:\.(?:nl|ts|js|mjs|mts))?$/.exec(requested)?.[1];
           if (stem && stem !== requested && findCodebaseItem(this.lam.codebase, stem)) return this.functionTool(name, { ...args, name: stem });
-          const own = listCodebase(this.lam.codebase);
-          const readable = own.length ? `a function of this program: ${own.join(", ")}` : "a function of this program, and this program has none of its own";
+          const own2 = listCodebase(this.lam.codebase);
+          const readable = own2.length ? `a function of this program: ${own2.join(", ")}` : "a function of this program, and this program has none of its own";
           const inScope = (this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : []).concat(Object.keys(this.lam.captures ?? {}), Object.keys(this.lam.let));
           const what = NATIVE_TOOLS.includes(requested) ? this.offeredToolDocs.has(requested) ? `${requested} is one of your currently offered tools, not a function of this program; call it directly` : `${requested} is a native tool name but is not offered in this call` : requested === this.lam.functionName ? `${requested} is the call you are executing: the opening message has all of its signature and instructions. ${SELF_CALL_ADVICE.replace(/\.$/, "")}` : this.neuraleseParameter(requested) ? `${requested} is this call's Neuralese input: its content is in your opening message, so use it from there, or write await read(${requested}) in eval for an ordinary copy` : inScope.includes(requested) ? `${requested} is a value in this call's eval scope: inspect it with eval, for example console.log(${requested})` : (
             // A text-typed call with no functions of its own (a writer) has nothing to read: it answers with its text.
-            !own.length && this.expectsTextResult() ? "This call returns text: send the text itself as the value of return_result" : void 0
+            !own2.length && this.expectsTextResult() ? "This call returns text: send the text itself as the value of return_result" : void 0
           );
           throw new Reject([{ path: requested, code: "no-such-function", expected: what ? `${readable}. ${what}` : readable }]);
         }
@@ -233831,8 +233884,8 @@ ${paths.join("\n")}`;
         const ownText = this.lam.body + "\n" + JSON.stringify(this.lam.args ?? {}) + "\n" + JSON.stringify(this.lam.let ?? {});
         const copied = PROMPT_EXAMPLE_TEXTS2.find((text3) => code.includes(text3) && !ownText.includes(text3));
         if (copied) {
-          const own = inputNames.length ? `this call's own instructions and inputs (${inputNames.join(", ")})` : "this call's own instructions";
-          const text3 = `prompt-example: ${JSON.stringify(copied)} comes from ${PROMPT_EXAMPLE_SOURCE}, not from this call; work from ${own} instead.`;
+          const own2 = inputNames.length ? `this call's own instructions and inputs (${inputNames.join(", ")})` : "this call's own instructions";
+          const text3 = `prompt-example: ${JSON.stringify(copied)} comes from ${PROMPT_EXAMPLE_SOURCE}, not from this call; work from ${own2} instead.`;
           return { kind: "rejected", text: text3 + this.captureScopeFailure("compile", code, scopeBefore, text3), codes: ["prompt-example"] };
         }
         const compiled2 = compileScopeSnippet(code, {
@@ -233910,6 +233963,12 @@ ${paths.join("\n")}`;
         } : void 0;
         this.activeScopeLocals = /* @__PURE__ */ new Map();
         const live2 = {
+          own: (value) => {
+            if (!startedCalls.has(value) && this.runtime.nativeEffects.enabled) {
+              this.runtime.nativeEffects.track(Promise.resolve(value));
+              this.runtime.frame?.task.track(Promise.resolve(value));
+            }
+          },
           inputs: inputs.live,
           locals: locals.live,
           captures: captureRead,
@@ -234085,6 +234144,8 @@ return await ${compiled2.entrypoint}(Object.assign({}, self.inputs, __live.input
             await callFrame.task.drainChildren(parentCallId);
             if (dropped) throw new Error(`eval finished while ${dropped} natural-language call${dropped === 1 ? "" : "s"} it started ${dropped === 1 ? "was" : "were"} still running; ${dropped === 1 ? "it was" : "they were"} stopped. Await every call (for example with Promise.all(...)) before the eval ends.`);
           }
+          await this.runtime.nativeEffects.drain();
+          if (this.runtime.nativeEffects.enabled) this.runtime.checkInterruption();
           const raw = finished;
           if (!raw || typeof raw !== "object" || !raw.bindings || typeof raw.bindings !== "object")
             throw new Reject([{ path: "code", code: "bad-action", expected: "an atomic scope transaction result" }]);
@@ -234312,6 +234373,7 @@ ${requested.tool}: ${refused.text}` };
           const frame = this.runtime.frame;
           const parentCallId = frame?.parentCallId;
           if (parentCallId) await frame.task.drainChildren(parentCallId);
+          await this.runtime.nativeEffects.drain();
           this.activeScopeLocals = void 0;
         }
       }
@@ -236344,12 +236406,12 @@ ${notes}` : opening;
           '// or read_code("namespace.function.TypeName") for the exact type there. Nested callables remain available in eval.',
           ...lines
         ];
-        const own = new Set(referencedTypeAliases([...lam.type.kind === "lambda" ? [
+        const own2 = new Set(referencedTypeAliases([...lam.type.kind === "lambda" ? [
           ...lam.type.params.fields.map((field) => formatType(field.type)),
           formatType(lam.type.returns)
         ] : []], lam.typesSrc));
         return [
-          ...[...aliases].filter((line) => !own.has(line)),
+          ...[...aliases].filter((line) => !own2.has(line)),
           ...lines
         ];
       }
@@ -238052,14 +238114,14 @@ function evalDeclarations(session, bindings2 = []) {
   const lam = session.lam;
   const codebase = lam.codebase;
   const types3 = { ...lam.typesSrc, ...session.analysisTypeAliases() };
-  const own = new Set(Object.keys(types3)), conflicting = /* @__PURE__ */ new Set(), typeScriptAliases = /* @__PURE__ */ new Set();
+  const own2 = new Set(Object.keys(types3)), conflicting = /* @__PURE__ */ new Set(), typeScriptAliases = /* @__PURE__ */ new Set();
   const collect = (level) => {
     for (const record3 of Object.values(level)) {
       if ("types" in record3) for (const [name, text3] of Object.entries(record3.types)) {
         if (!Object.hasOwn(types3, name)) {
           types3[name] = text3;
           if (record3.kind === "module") typeScriptAliases.add(name);
-        } else if (!own.has(name) && types3[name] !== text3) conflicting.add(name);
+        } else if (!own2.has(name) && types3[name] !== text3) conflicting.add(name);
       }
       collect(record3.codebase);
     }
@@ -238584,13 +238646,13 @@ async function runTiered(engine, settings, host) {
     try {
       output = await tier.serve(input);
     } catch (error) {
-      const own = lastPlan()?.capture?.base.callId ?? null;
-      if (own) lastCall = own;
+      const own2 = lastPlan()?.capture?.base.callId ?? null;
+      if (own2) lastCall = own2;
       if (last) {
         flush();
         throw error;
       }
-      note2(isDeopt(error) && !lastPlan()?.declined ? { tier: tier.id, event: "deopt", kind: "guard", reason: message(error), to: nextBelow(tier) } : isDeopt(error) ? { tier: tier.id, event: "deopt", kind: "verify", reason: message(error), to: nextBelow(tier) } : { tier: tier.id, event: "deopt", kind: failureKind(error), reason: message(error), to: nextBelow(tier), call_id: own, own: !!own });
+      note2(isDeopt(error) && !lastPlan()?.declined ? { tier: tier.id, event: "deopt", kind: "guard", reason: message(error), to: nextBelow(tier) } : isDeopt(error) ? { tier: tier.id, event: "deopt", kind: "verify", reason: message(error), to: nextBelow(tier) } : { tier: tier.id, event: "deopt", kind: failureKind(error), reason: message(error), to: nextBelow(tier), call_id: own2, own: !!own2 });
       continue;
     }
     const capture = lastPlan()?.capture;
@@ -240006,6 +240068,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     }
   }
   const callId = task.nextCallId();
+  const nativeEffects = new NativeEffectOwner(task.runtime.options.settleNativeEffects !== false);
   task.beginInvocation(callId);
   try {
     task.registerGraphCall(callId, frame.parentCallId);
@@ -240014,6 +240077,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     const parentOccurrence = parentOccurrenceEvent?.native_occurrence;
     const invocationSkillFiles = options.manifest?.inline ? options.skillFiles ?? frame.skillFiles : options.skillFiles;
     const childFrame = {
+      nativeEffects,
       task,
       chain: [...frame.chain, callIdentity],
       serviceChain: [...frame.serviceChain ?? frame.chain, definition.id],
@@ -240201,6 +240265,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       hooks: kernelHooks,
       checkEvalBindings: task.runtime.options.checkEvalBindings,
       checkAwaitedFields: task.runtime.options.checkAwaitedFields,
+      settleNativeEffects: task.runtime.options.settleNativeEffects,
       agent: task.runtime.options.agent ?? (agent ? (session) => agent.run(session) : void 0),
       maxActions: limits.maxActions,
       maxToolCalls: limits.maxToolCalls,
@@ -240403,13 +240468,13 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       fusion?.produced?.(hostValue);
       return hostValue;
     } catch (error) {
-      const own = error instanceof NatlangCallError && error.callId === callId;
+      const own2 = error instanceof NatlangCallError && error.callId === callId;
       const cancelled = (frame.signal ?? task.signal).aborted;
-      if (!own) detail = error instanceof Error ? error.message : String(error);
+      if (!own2) detail = error instanceof Error ? error.message : String(error);
       frame.abort?.abort(new Error(`${definition.name} ended without a result`));
       if (folder2?.transaction.open) folder2.transaction.abort();
       for (const transaction of extraTransactions) if (transaction.open) transaction.abort();
-      if (own) throw error;
+      if (own2) throw error;
       throw new NatlangCallError(
         definition.name,
         outcome,
@@ -240421,6 +240486,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       );
     } finally {
       await task.drainChildren(callId);
+      await childFrame.nativeEffects?.drain();
       releaseTrace(callId);
       if (liveCall) task.live({ type: "call_end", ...liveCall, outcome, detail });
       task.record({
@@ -240448,6 +240514,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       }
     }
   } finally {
+    nativeEffects.close();
     task.endInvocation(callId);
   }
 }
@@ -240557,6 +240624,7 @@ async function runCrispCase(input) {
     capture.watch(() => nativeTrace.trace.events);
     const raw = await runInFrame({ ...childFrame, services }, () => item.run(args));
     await task.drainChildren(callId);
+    await childFrame.nativeEffects?.drain();
     if (node.type.kind !== "lambda") throw new Error("not a function");
     const env = new TypeEnv(node.types);
     env.classes = options.classes;
@@ -240626,6 +240694,7 @@ async function runCrispCase(input) {
     error = caught;
   }
   await task.drainChildren(callId);
+  await childFrame.nativeEffects?.drain();
   nativeTrace?.finish("error");
   const effects = capture.completedEffects("crisp");
   const files2 = folder2?.transaction.open ? folder2.transaction.folder.diffSync().changes.map((change) => ({ path: change.path, kind: change.kind })) : [];
@@ -240652,6 +240721,7 @@ var init_kernel = __esm({
   "src/runtime/kernel.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    init_effects();
     init_effects();
     init_crisp_trace();
     init_program();
@@ -241333,12 +241403,44 @@ function invokeNativeEntry(record3, exportName, args, invoke) {
   const current = currentFrame();
   const frame = current ? resolveFrame() : void 0;
   if (!frame) return invoke();
-  const scopedFrame = { ...frame, serviceChain: [...frame.serviceChain ?? frame.chain, record3.id] };
-  const scopedInvoke = () => runInFrame(scopedFrame, invoke);
-  if (frame.parentCallId && frame.task.isInvocationActive(frame.parentCallId) || frame.task.runtime.options.recording?.nativeRoots === false) return scopedInvoke();
+  const declared = record3.exports[exportName];
+  const owned = !frame.nativeEffects && !(frame.parentCallId && frame.task.isInvocationActive(frame.parentCallId));
+  const nativeEffects = owned ? new NativeEffectOwner(frame.task.runtime.options.settleNativeEffects !== false, declared?.kind !== "function" || declared.async) : frame.nativeEffects;
+  const scopedFrame = { ...frame, ...nativeEffects ? { nativeEffects } : {}, serviceChain: [...frame.serviceChain ?? frame.chain, record3.id] };
+  const settle = (run) => {
+    if (!nativeEffects) return run();
+    if (!owned) {
+      const value = run();
+      if (nativeEffects.enabled && value !== null && (typeof value === "object" || typeof value === "function") && typeof value.then === "function") {
+        const pending = Promise.resolve(value);
+        nativeEffects.track(pending);
+        frame.task.track(pending);
+      }
+      return value;
+    }
+    try {
+      const value = run();
+      if (value !== null && (typeof value === "object" || typeof value === "function") && typeof value.then === "function")
+        return Promise.resolve(value).then(async (result) => {
+          await nativeEffects.drain();
+          return result;
+        }, async (error) => {
+          await nativeEffects.drain();
+          throw error;
+        }).finally(() => nativeEffects.close());
+      if (nativeEffects.hasPending) throw new Error("A synchronous native entry started asynchronous Native I/O without returning its promise.");
+      nativeEffects.close();
+      return value;
+    } catch (error) {
+      nativeEffects.close();
+      throw error;
+    }
+  };
+  const scopedInvoke = () => settle(() => runInFrame({ ...scopedFrame, services: owned ? recordingServices(frame.services ?? frame.task.services, () => {
+  }, void 0, { task: frame.task }, nativeEffects) : scopedFrame.services }, invoke));
+  if (!owned || frame.task.runtime.options.recording?.nativeRoots === false) return scopedInvoke();
   const task = frame.task, store = task.runtime.callStore();
   if (!store) return scopedInvoke();
-  const declared = record3.exports[exportName];
   const spec = declared?.kind === "function" ? declared : { args: Object.fromEntries(args.map((_10, index) => [`arg${index}`, "unknown"])), returns: "unknown" };
   const callId = task.nextCallId(), name = exportName === "default" ? record3.name : exportName;
   const params = Object.entries(spec.args).map(([name2, type]) => ({
@@ -241415,7 +241517,7 @@ function invokeNativeEntry(record3, exportName, args, invoke) {
     }
   };
   try {
-    const value = runInFrame({ ...scopedFrame, parentCallId: callId, services }, invoke);
+    const value = settle(() => runInFrame({ ...scopedFrame, parentCallId: callId, services }, invoke));
     if (value !== null && (typeof value === "object" || typeof value === "function") && typeof value.then === "function")
       return Promise.resolve(value).then((result) => {
         finish("done", result);
@@ -241427,6 +241529,7 @@ function invokeNativeEntry(record3, exportName, args, invoke) {
     finish("done", value);
     return value;
   } catch (error) {
+    if (owned) nativeEffects?.close();
     finish("error", void 0, error);
     throw error;
   }
@@ -243952,6 +244055,7 @@ __export(lowered_exports, {
   named: () => named,
   numericProgress: () => numericProgress,
   nzModule: () => nzModule,
+  own: () => own,
   planDefinition: () => planDefinition,
   readNeuralese: () => readNeuralese,
   readNeuraleseIfReference: () => readNeuraleseIfReference,
@@ -244507,6 +244611,7 @@ var init_lowered = __esm({
     init_combinators();
     init_neuralese2();
     init_selected_captures();
+    init_context();
     readNeuralese = readNeuraleseForCurrentTask;
     toStringValue = (value) => {
       if (typeof value === "symbol") throw new TypeError("Cannot convert a Symbol value to a string");
@@ -264086,7 +264191,7 @@ function compileProjectInSession(options, files2) {
     };
     const rewriteGate = options.rewriteGate ?? loadRewriteGate(fs2, root2);
     const emit3 = (fileName, text3) => {
-      if ((options.constrained || /\b__natlang\.(?:fuseSite|instantiate)\(/.test(text3)) && /\.js$/.test(fileName) && !/(?:\b(?:const|let|var)\s+__natlang\b|\bimport\s*\{[^}]*\b__natlang\b)/.test(text3)) {
+      if ((options.constrained || /\b__natlang\.(?:fuseSite|instantiate|own)\(/.test(text3)) && /\.js$/.test(fileName) && !/(?:\b(?:const|let|var)\s+__natlang\b|\bimport\s*\{[^}]*\b__natlang\b)/.test(text3)) {
         const commonjs = compilerOptions.module === import_typescript28.default.ModuleKind.CommonJS || /Object\.defineProperty\(exports/.test(text3);
         text3 = (commonjs ? `const __natlang = require(${JSON.stringify(specifierFor(true))}).__natlang;
 ` : `import { __natlang } from ${JSON.stringify(specifierFor(false))};

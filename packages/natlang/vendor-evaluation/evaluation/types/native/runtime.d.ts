@@ -1,7 +1,7 @@
 import { type InlineInstructionOrigin } from '../runtime/lowered.js';
 import { type EvalEnvironment, type HostEvent } from './evaluator.js';
 import { PageStore } from './pages.js';
-import { type EffectEvent } from './effects.js';
+import { NativeEffectOwner, type EffectEvent } from './effects.js';
 import { TypeEnv, type Type } from './types.js';
 import { type LambdaNode, type Value } from './values.js';
 import { NativeTraceRecorder } from './trace.js';
@@ -62,6 +62,8 @@ export type NativeRuntimeOptions = {
     checkEvalBindings?: boolean;
     /** Check unresolved asynchronous values before reading their result fields (default true). */
     checkAwaitedFields?: boolean;
+    /** Join accepted Native operations at the eval boundary (default true). */
+    settleNativeEffects?: boolean;
     /**
      * The root call's ID: unique per run (it keys the call record, its children's parent link and the trace). Without one a
      * fresh `native-run:<uuid>` is used. `runLabel` is the logical name shared by runs of one kind (`curriculum-reference`),
@@ -194,6 +196,7 @@ export declare const runSeedKey: (options: {
 }) => string;
 export declare class NativeRuntime {
     readonly events: HostEvent[];
+    readonly nativeEffects: NativeEffectOwner;
     readonly trace: NativeTraceRecorder;
     readonly options: {
         checkEvalBindings?: boolean;

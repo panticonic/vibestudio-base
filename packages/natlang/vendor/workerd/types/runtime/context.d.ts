@@ -26,6 +26,8 @@ export type DecisionReadout = {
 };
 export type Frame = Readonly<{
     task: NatlangTask;
+    /** Accepted Native RPCs owned by this logical invocation, independently of recording. */
+    nativeEffects?: import('../native/effects.js').NativeEffectOwner;
     /** Type aliases visible in this invocation's authored program, inherited by runtime-created typed readers. */
     typeAliases?: Readonly<Record<string, string>>;
     /** Call identities of the natural-language definitions that are currently active above this point. */
@@ -158,6 +160,8 @@ export declare class NatlangRecursionError extends Error {
 export declare const noSmallerArgument: (name: string) => string;
 /** The readable name in an authored callable's guard ID (`prefix#name@position`). */
 export declare const guardName: (id: string) => string;
+/** Retain an authored async helper's full lifetime without adding a trace call. */
+export declare function own<T>(fn: () => T): T;
 /**
  * Enter an authored function. A function already active in its own call chain may run again only on a smaller
  * argument: a part of the argument it had (reachable through its properties or elements), a shorter array or string,

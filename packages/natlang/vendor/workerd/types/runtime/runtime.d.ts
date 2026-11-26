@@ -145,6 +145,8 @@ export type NatlangLimits = {
 };
 export type Services = Record<string, object>;
 export type NatlangRuntimeOptions = {
+    /** Join accepted Native operations before invocation completion (default true). */
+    settleNativeEffects?: boolean;
     /** Set false to retain legacy runtime-only handling of unknown eval names. Service scopes stay enforced. */
     checkEvalBindings?: boolean;
     /** Check unresolved asynchronous values before reading their result fields (default true). */

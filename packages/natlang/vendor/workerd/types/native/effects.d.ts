@@ -1,4 +1,17 @@
 import type { NatlangTask } from '../runtime/runtime.js';
+/** Logical invocation ownership exists even when call recording is disabled. */
+export declare class NativeEffectOwner {
+    readonly enabled: boolean;
+    readonly allowsAsync: boolean;
+    private readonly pending;
+    private closed;
+    constructor(enabled?: boolean, allowsAsync?: boolean);
+    assertLive(): void;
+    track<T>(promise: Promise<T>): Promise<T>;
+    get hasPending(): boolean;
+    drain(): Promise<void>;
+    close(): void;
+}
 /** One service call, as recorded: requested, then completed or failed. */
 export type EffectEvent = {
     phase: 'requested' | 'completed' | 'failed';
@@ -41,4 +54,4 @@ export declare function invokeServiceMethod(object: object, method: string, valu
  * Wrap services so each method call is recorded as an effect. Objects are wrapped one level deep
  * per property access; the original receiver is preserved.
  */
-export declare function recordingServices<T extends Record<string, unknown>>(services: T, emit: (event: EffectEvent) => unknown, authority?: T, scope?: EffectScope): T;
+export declare function recordingServices<T extends Record<string, unknown>>(services: T, emit: (event: EffectEvent) => unknown, authority?: T, scope?: EffectScope, owner?: NativeEffectOwner): T;
