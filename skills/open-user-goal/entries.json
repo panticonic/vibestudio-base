@@ -170,9 +170,9 @@
     "additionalArguments": {}
   },
   "owned-operations": {
-    "program": "skills/open-user-goal/coordinateOwnedOperations.ts",
+    "program": "skills/open-user-goal/coordinateOwnedOperations.nl",
     "callable": "coordinateOwnedOperations",
-    "resultType": "OperationsGoalOutcome",
+    "resultType": "string | null",
     "skill": "ownedOperations",
     "parameterNames": [
       "goal"
@@ -180,9 +180,9 @@
     "additionalArguments": {}
   },
   "examplesAdoption": {
-    "program": "skills/open-user-goal/reviewExamplesAdoption.ts",
+    "program": "skills/open-user-goal/reviewExamplesAdoption.nl",
     "callable": "reviewExamplesAdoption",
-    "resultType": "AdoptionOutcome",
+    "resultType": "string",
     "skill": "examplesAdoption",
     "parameterNames": [
       "goal"

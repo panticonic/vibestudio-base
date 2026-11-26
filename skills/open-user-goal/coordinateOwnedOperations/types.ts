@@ -1,4 +1,4 @@
-import type { OperationsReport, OperationsRequest } from "./roles/types.js";
+import type { OperationsReport, OperationsRequest } from "./investigateOperations/roles/types.js";
 
 export type OperationsDocket = {
   id: string;
@@ -18,4 +18,5 @@ export type OperationsDocketEvidence = {
 
 export type OperationsDossier = { path: string; digest: string };
 
-export type OperationsGoalOutcome = { operation: OperationsReport | null; dossier: OperationsDossier | null; disposition: "reviewed" | "held"; reason: string };
+export type {OperationsReport} from "./investigateOperations/roles/types.js";
+export type OperationsInvestigation={operation:OperationsReport|null;finding:string};

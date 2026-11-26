@@ -1,0 +1,3 @@
+# Source56 SDK identity
+
+Canonical stage-vibestudio produced each of workerd/evaluation/dashboard/pi from clean Core15df2a1a972598953c5493a6464dbf443029e630, followed immediately by each target's canonical fresh reproduction --check. All five targets including System llama passed:294 staged files,42.58s/~1GiB. Base starts Adoption doc036bd1ae (all product/test bytes identicalc9); System startsacf70f7. No private Root/native-authority changes or model calls are part of this SDK commit. Source55 and prior ready family trees remain unchanged. Consumer proof follows in the ops receipt; staging is not a claim that consumers have already run.

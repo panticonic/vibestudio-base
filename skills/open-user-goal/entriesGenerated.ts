@@ -171,9 +171,9 @@ export default {
     "additionalArguments": {}
   },
   "owned-operations": {
-    "program": "skills/open-user-goal/coordinateOwnedOperations.ts",
+    "program": "skills/open-user-goal/coordinateOwnedOperations.nl",
     "callable": "coordinateOwnedOperations",
-    "resultType": "OperationsGoalOutcome",
+    "resultType": "string | null",
     "skill": "ownedOperations",
     "parameterNames": [
       "goal"
@@ -181,9 +181,9 @@ export default {
     "additionalArguments": {}
   },
   "examplesAdoption": {
-    "program": "skills/open-user-goal/reviewExamplesAdoption.ts",
+    "program": "skills/open-user-goal/reviewExamplesAdoption.nl",
     "callable": "reviewExamplesAdoption",
-    "resultType": "AdoptionOutcome",
+    "resultType": "string",
     "skill": "examplesAdoption",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6693817048d8a2c6a6492875c8773dc8f439db4f5a96a1273a3c6ef82544d13f"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6d7b1a9051fdae9c3f83e705e319c64c69cc87981ec2c4e2879a0beed5bddb90"};

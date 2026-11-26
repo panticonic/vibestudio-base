@@ -338,16 +338,11 @@ export type AdoptionComposition = {
   issue: string | null; owner: string | null; privateFiles: string[]; pulledUnits: string[];
   settings: string[]; minimumAppVersion: string | null; digest: string | null;
 };
-export type AdoptionEvidence = { installed: AdoptionInstalled; composition: AdoptionComposition };
-export type AdoptionPlan = {
-  disposition: "record-private" | "explain-only" | "hold-authority" | "hold-conflict" | "hold-override" |
-    "hold-epoch" | "hold-closure" | "hold-duplicate" | "hold-stale";
-  finding: string; proof: string[];
-};
+export type AdoptionEvidence = { installed: AdoptionInstalled | null; composition: AdoptionComposition | null };
+export type AdoptionNoteDraft = { finding: string; proof: string[] };
 export type AdoptionGate = { event: string; status: "current" | "changed" };
 export type AdoptionReceipt = { path: string; digest: string; event: string };
 export type AdoptionReadback = { main: string; event: string; digest: string | null };
-export type AdoptionOutcome = AdoptionReceipt | { disposition: AdoptionPlan["disposition"]; finding: string };
 
 export type SystemCandidateCard = {
   id: string; title: string; usual: string; workingEvent: string; deltaId: string;
@@ -471,7 +466,6 @@ export type TerminalRepairReport = { artifact: TerminalRepairArtifact | null; ou
 
 export type { LiveTendrilOutcome } from "./workOnLiveTendrilBoard/types.js";
 export type { LaunchReport } from "./reconcilePanelLaunchState/types.js";
-export type { OperationsGoalOutcome } from "./coordinateOwnedOperations/types.js";
 export * from "./workOnAuthoringGoal/discovery/types.js";
 export type { ReadinessReport as ApiReadinessReport } from "./workOnApiReadinessGoal/types.js";
 export * from "./reviewWebhookAdmission/contract.js";

@@ -9,7 +9,7 @@ function auditFixture(): Audit {
   const last = structuredClone(first);
   last.revision = 2;
   last.checkpoints.push({ revision: 2, assessment: { role: "release", evidenceIds: ["security", "quality"], decision: "ready", reason: "Checks approved" } });
-  return { programRequestedCleanup: true, opened: [{ handle, original: { id: handle.id } }],
+  return { programRequestedCleanup: true, opened: [{ handle, original: { id: handle.id,kind:"do",contextId:handle.contextId,targetId:handle.targetId } }],
     snapshots: [{ handle, phase: "before-restart", value: first }, { handle, phase: "after-restart", value: structuredClone(first) },
       { handle, phase: "before-cleanup", value: last }],
     restarts: [{ handle, before: [{ entityId: handle.id }], after: [{ entityId: handle.id }] }],
@@ -57,4 +57,31 @@ describe("native custody independent of semantic answer expectations",()=>{
   if(mutation==="missing-context")audit.destroyedContextIds=[];
   expect(verifyOwnedOperationCustody(audit).passed).toBe(false);
  });
+});
+
+
+it("matches genuine concurrent restart evidence by exact issued owner rather than completion order",()=>{
+ const audit=auditFixture(),first=audit.opened[0]!.handle,second={...first,id:"second-worker",contextId:"second-context",targetId:"second-target"};
+ audit.opened.push({handle:second,original:{...audit.opened[0]!.original,id:second.id,contextId:second.contextId,targetId:second.targetId}});
+ const rows=structuredClone(audit.snapshots).map(row=>({...row,handle:second}));
+ audit.snapshots.push(...rows);audit.restarts.unshift({...structuredClone(audit.restarts[0]!),handle:second});
+ audit.retiredIds.push(second.id);audit.destroyedContextIds.push(second.contextId);
+ expect(verifyOwnedOperationCustody(audit).passed).toBe(true);
+ expect(verifyOwnedOperationCustody(audit,{matchRestartsByOwner:false}).checks.nativeRestartContinuity).toBe(false);
+ const corrupt=structuredClone(audit);corrupt.snapshots.find(row=>row.phase==="after-restart"&&row.handle.id===second.id)!.handle={...second,targetId:"foreign"};
+ expect(verifyOwnedOperationCustody(corrupt).passed).toBe(false);
+});
+it("retains legitimate appended checkpoints across a concurrent restart without inventing lost state",()=>{
+ const audit=auditFixture();const after=audit.snapshots.find(row=>row.phase==="after-restart")!,final=audit.snapshots.find(row=>row.phase==="before-cleanup")!;
+ after.value=structuredClone(final.value);
+ expect(verifyOwnedOperationCustody(audit).passed).toBe(true);
+ const corrupt=structuredClone(audit);corrupt.snapshots.find(row=>row.phase==="after-restart")!.value.checkpoints[0]!.assessment.reason="changed historical checkpoint";
+ expect(verifyOwnedOperationCustody(corrupt).passed).toBe(false);
+});
+
+it("joins every issued handle to the actual Native entity result without invoking accessors",()=>{
+ const audit=auditFixture();audit.opened[0]!.handle.targetId="invented-target";
+ expect(verifyOwnedOperationCustody(audit).checks.nativeIssuedOwners).toBe(false);
+ const getter=auditFixture();let reads=0;Object.defineProperty(getter.opened[0]!.original,"targetId",{get(){reads++;return getter.opened[0]!.handle.targetId;}});
+ expect(verifyOwnedOperationCustody(getter).checks.nativeIssuedOwners).toBe(false);expect(reads).toBe(0);
 });
