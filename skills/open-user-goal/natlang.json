@@ -70,7 +70,7 @@
       "coordinateOwnedOperations/selectOperationsDocket.nl"
     ],
     "ownedOperations": [
-      "coordinateOwnedOperations.ts"
+      "coordinateOwnedOperations/investigateOperations/completeOperation.ts"
     ],
     "adoptionReview": [
       "reviewExamplesAdoption/findStagedComposition.nl"
@@ -595,6 +595,18 @@
       "types": [
         "SkillMaintenanceFindings"
       ]
+    },
+    "coordinateOwnedOperations": {
+      "mounts": [
+        "coordinateOwnedOperations/investigateOperations/roles"
+      ],
+      "types": [
+        "OperationsDocket",
+        "OperationsDocketEvidence",
+        "OperationsDossier",
+        "OperationsInvestigation",
+        "OperationsReport"
+      ]
     }
   },
   "targets": {
@@ -620,7 +632,6 @@
     "verifyAndroidDelivery/mobile": "skills/mobile-system-testing/scenario",
     "workOnLiveTendrilBoard/workflow": "skills/tendrils/workflow",
     "recoverCliRoute/remote": "skills/remote-access",
-    "coordinateOwnedOperations/roles": "skills/vibestudio-workflows/runWorkflow/operate",
     "compareTestkitCloseouts/readAttempt/session": "skills/session-test-review",
     "workOnChatContinuity/workspace": "skills/open-chat-continuity",
     "workOnChatContinuity/reviewChatContinuity/policy": "skills/conversation-evidence-review",
@@ -732,6 +743,7 @@
     "reviewRetainedMemory/investigateRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation",
     "reviewExtensionDossier/investigateDossier/extensiondev": "skills/extensiondev/natlang",
     "reviewRetainedBuildIncident/assessCheckpoint/performance": "skills/performance/build",
-    "maintainWorkspaceSkill/investigateSkill/authoring": "skills/natlang-authoring"
+    "maintainWorkspaceSkill/investigateSkill/authoring": "skills/natlang-authoring",
+    "coordinateOwnedOperations/investigateOperations/roles": "skills/vibestudio-workflows/runWorkflow/operate"
   }
 }

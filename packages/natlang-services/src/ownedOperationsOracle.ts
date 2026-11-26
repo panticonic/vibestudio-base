@@ -44,7 +44,7 @@ export function verifyOwnedOperations(audit: Audit, expected: Expected, report: 
 }
 
 /** Independent native custody, without private semantic decisions or a required report echo. */
-export function verifyOwnedOperationCustody(audit: Audit) {
+export function verifyOwnedOperationCustody(audit: Audit, {matchRestartsByOwner=true}: {matchRestartsByOwner?:boolean}={}) {
   const handles=audit.opened.map(row=>row.handle);
   const issued=(handle:Audit["opened"][number]["handle"])=>handles.some(actual=>nativeWireEqual(actual,handle));
   const sameSet=(actual:string[],expected:string[])=>actual.length===expected.length &&
@@ -52,6 +52,13 @@ export function verifyOwnedOperationCustody(audit: Audit) {
   const before=audit.snapshots.filter(row=>row.phase==="before-restart");
   const after=audit.snapshots.filter(row=>row.phase==="after-restart");
   const checks={
+    nativeIssuedOwners:audit.opened.every(({handle,original})=>{
+      if(original===null||typeof original!=="object"||Array.isArray(original))return false;
+      return [["id",handle.id],["kind","do"],["contextId",handle.contextId],["targetId",handle.targetId]].every(([key,value])=>{
+        const descriptor=Object.getOwnPropertyDescriptor(original,key!);
+        return !!descriptor&&Object.hasOwn(descriptor,"value")&&descriptor.value===value;
+      });
+    }),
     nativeDistinctOwners:new Set(handles.map(row=>row.id)).size===handles.length &&
       new Set(handles.map(row=>row.contextId)).size===handles.length,
     nativeOwnedReadbacks:audit.snapshots.every(row=>issued(row.handle) &&
@@ -66,8 +73,17 @@ export function verifyOwnedOperationCustody(audit: Audit) {
     nativeRestartContinuity:before.length===audit.restarts.length && after.length===audit.restarts.length &&
       audit.restarts.every((restart,index)=>issued(restart.handle) &&
         Array.isArray(restart.before)&&restart.before.length>0&&Array.isArray(restart.after)&&restart.after.length>0 &&
-        nativeWireEqual(before[index]?.handle,restart.handle) && nativeWireEqual(after[index]?.handle,restart.handle) &&
-        nativeWireEqual(before[index]?.value,after[index]?.value)),
+        (matchRestartsByOwner || (nativeWireEqual(before[index]?.handle,restart.handle) &&
+          nativeWireEqual(after[index]?.handle,restart.handle) && nativeWireEqual(before[index]?.value,after[index]?.value)))) &&
+      (!matchRestartsByOwner || handles.every(handle=>{
+        const count=audit.restarts.filter(row=>nativeWireEqual(row.handle,handle)).length;
+        const prior=before.filter(row=>nativeWireEqual(row.handle,handle)).map(row=>row.value).sort((a,b)=>b.revision-a.revision);
+        const current=after.filter(row=>nativeWireEqual(row.handle,handle)).map(row=>row.value).sort((a,b)=>b.revision-a.revision);
+        return prior.length===count&&current.length===count&&prior.every((value,index)=>{
+          const observed=current[index];
+          return !!observed&&observed.revision>=value.revision&&nativeWireEqual(value.checkpoints,observed.checkpoints.slice(0,value.revision));
+        });
+      })),
     nativeRetiredWorkers:sameSet(audit.retiredIds,handles.map(row=>row.id)) && audit.remainingEntityIds.length===0,
     nativeDestroyedContexts:sameSet(audit.destroyedContextIds,handles.map(row=>row.contextId)) && audit.remainingContextIds.length===0,
   };

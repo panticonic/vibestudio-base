@@ -171,9 +171,9 @@ export default {
     "additionalArguments": {}
   },
   "owned-operations": {
-    "program": "skills/open-user-goal/coordinateOwnedOperations.ts",
+    "program": "skills/open-user-goal/coordinateOwnedOperations.nl",
     "callable": "coordinateOwnedOperations",
-    "resultType": "OperationsGoalOutcome",
+    "resultType": "string | null",
     "skill": "ownedOperations",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"7913b533c1b6cce7a7553f5044b726f7068842a8b7e17ab86bd769007d431577"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6d7b1a9051fdae9c3f83e705e319c64c69cc87981ec2c4e2879a0beed5bddb90"};

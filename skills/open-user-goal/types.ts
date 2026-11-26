@@ -466,7 +466,6 @@ export type TerminalRepairReport = { artifact: TerminalRepairArtifact | null; ou
 
 export type { LiveTendrilOutcome } from "./workOnLiveTendrilBoard/types.js";
 export type { LaunchReport } from "./reconcilePanelLaunchState/types.js";
-export type { OperationsGoalOutcome } from "./coordinateOwnedOperations/types.js";
 export * from "./workOnAuthoringGoal/discovery/types.js";
 export type { ReadinessReport as ApiReadinessReport } from "./workOnApiReadinessGoal/types.js";
 export * from "./reviewWebhookAdmission/contract.js";

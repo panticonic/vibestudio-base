@@ -170,9 +170,9 @@
     "additionalArguments": {}
   },
   "owned-operations": {
-    "program": "skills/open-user-goal/coordinateOwnedOperations.ts",
+    "program": "skills/open-user-goal/coordinateOwnedOperations.nl",
     "callable": "coordinateOwnedOperations",
-    "resultType": "OperationsGoalOutcome",
+    "resultType": "string | null",
     "skill": "ownedOperations",
     "parameterNames": [
       "goal"
