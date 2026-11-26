@@ -1,13 +1,13 @@
 ---
-description: Compare divergent intents, preserve concurrent work, and settle only the authorized owned project.
+description: Reconcile the authorized owned project using current observations, actual feedback and retained source evidence.
 args:
   goal: string
-  window: ReviewWindow
   prior: ArchiveSnapshot | null
 returns: IntegrationResult
 budget: { maxTurns: 30 }
 ---
-1. Call observeProject for the actual common, local and incoming file contents and native coordinates. Infer which intentions the user wants, taking any qualifiers from the real window or the user-authorized prior record.
-2. Ask planResolution to reconcile the evidence. Hold for ambiguous ownership, missing approval, closed windows, or requests for read-only analysis. Include a reason based on actual evidence and the current head. Never use invented coordinates.
-3. Apply necessary source edits through writeResolution. Then re-observe and replan from the new head before merging with the currently offered decisions. When an authorized edit leaves the current and incoming files byte-identical and there is no remaining decision, call the merge with an empty decision list so the native integration can record convergence. When a newer revision is reported, observeProject again for the current window and files. Preserve the peer amendment and replan only while the user's authorization still holds.
-4. After real merge acceptance observe again. Mark integrated only after no remaining coordinates and after the resulting files establish the user's intentions. Return the exact observed final head and reason.
+Investigate the actual project view with observeProject and interpret the requested intentions with the full prior snapshot when relevant. Planning receives the actual current observation, including its own window/head and operation feedback; an earlier window is historical evidence and must not be used as current authority. Use planResolution when useful to decide supported edits, offered resolutions or a reasoned hold. A user-requested read-only investigation or closed/pending window does not authorize mutation.
+
+Choose the needed native operations through writeResolution at their exact current head. Consume the actual result: accepted records a committed operation, changed records no submitted effect at that stale head, and held records no mutation under that window. Re-observe/replan as actual feedback requires, preserving peer amendments and the user's original qualifiers. Combining approved values can use an exact source edit followed by the then-current offered resolution; there is no requirement for an option literally named composed. An empty merge can record genuine native convergence when the actual remaining coordinate set is empty.
+
+Before reporting, interpret the latest current file state and actual operationFeedback. Do not retain an earlier held/integrated assessment after later accepted work changed that state. Report integrated only with actual native settlement and requested intentions established, and return its actual current head and explanation. Keep project configuration changes separate from requested handoff evidence; do not add explanatory bookkeeping fields to live source unless the user actually requested that source change. No fixed retry count, helper route, or private expected answer is prescribed.

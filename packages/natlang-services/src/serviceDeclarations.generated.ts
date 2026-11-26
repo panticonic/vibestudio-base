@@ -2850,11 +2850,13 @@ type ReconcileChoice = {
   options: ReconcileResolution[];
 };
 
-type ReconcileView = { head: string; source: string; baseline: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
+type ReconcileEffect = { status: "accepted" | "changed" | "held"; head: string };
+
+type ReconcileOperationFeedback = {kind:"apply"|"merge";requestedHead:string;result:ReconcileEffect};
+
+type ReconcileView = { head: string; source: string; baseline: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[]; operationFeedback: ReconcileOperationFeedback[] };
 
 type ReconcileEdit = { path: string; before: string; after: string };
-
-type ReconcileEffect = { status: "accepted" | "changed" | "held"; head: string };
 
 type ReconcileDecision = { coordinate: { kind: "file"; id: string }; resolution: ReconcileResolution; rationale: string };
 
