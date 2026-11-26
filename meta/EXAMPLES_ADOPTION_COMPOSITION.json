@@ -38,12 +38,6 @@
       "finding": "Receipt union removes the requested finding whenever a note is recorded; whether mixed questions require a typed answer must be audited per literal goal."
     }
   ],
-  "toAudit": [
-    "All literal note-only/query/mixed obligations",
-    "Actor discover/installed/compose/confirm mandatory routes versus actual goal-required observations and native authority",
-    "Reference status/owner/proof path/exact artifact count versus actual current composition/persisted bytes",
-    "Public finding/receipt/current readback type and source-bound Host review contract"
-  ],
   "preserve": [
     "Actual native composition validation",
     "Owned frontier/current-state CAS",
@@ -58,8 +52,7 @@
     }
   ],
   "unchecked": [
-    "Dynamic/namespace/indirect semantic returns in remaining TS roots",
-    "No new public/native controls run for Adoption yet"
+    "Dynamic/namespace/indirect semantic returns in remaining TS roots"
   ],
   "remaining": "No live native qualification or semantic admission review claimed; originals unchanged.",
   "implementation": [
@@ -288,5 +281,28 @@
       "unit": "vibe-adoption-declarations-20261126a",
       "status": "generation +real check passed"
     }
+  },
+  "originalAuditQuestions": [
+    "All literal note-only/query/mixed obligations",
+    "Actor discover/installed/compose/confirm mandatory routes versus actual goal-required observations and native authority",
+    "Reference status/owner/proof path/exact artifact count versus actual current composition/persisted bytes",
+    "Public finding/receipt/current readback type and source-bound Host review contract"
+  ],
+  "checked": [
+    "All literal note-only/query/mixed obligations",
+    "Actor discover/installed/compose/confirm mandatory routes versus actual goal-required observations and native authority",
+    "Reference status/owner/proof path/exact artifact count versus actual current composition/persisted bytes",
+    "Public finding/receipt/current readback type and source-bound Host review contract"
+  ],
+  "worldPreservation": {
+    "original": "/home/werg/vibe-skill-maintenance-semantic-sst/skills/system-testing/open-goal-examples-adoption-worlds.ts",
+    "current": "/home/werg/vibe-adoption-semantic-sst/skills/system-testing/open-goal-examples-adoption-worlds.ts",
+    "beforeSha256": "3f569b50ddab9a7af51f353316014289f0c6704d6103a685ff42ffebe1c5f38b",
+    "afterSha256": "5774d8e82d2ca5c22e3ca16b8cea16760c734a99c0624b48966dff071ac17458",
+    "allOriginalWorldFieldsExact": true,
+    "worlds": 24,
+    "requestedFindings": 12,
+    "requiredArtifacts": 10,
+    "conditionalArtifacts": 3
   }
 }
