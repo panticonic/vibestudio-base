@@ -2285,8 +2285,7 @@ type MemoryEvidence = {
 type MemoryCitation = { layer: "message" | "commit" | "working"; ref: string; coordinate: string; quote: string };
 
 type MemoryOutcome = {
-  disposition: "confirmed" | "contradicted" | "replaced" | "discussion-only" | "record-only" | "working-only" |
-    "ambiguous" | "no-evidence";
+  disposition: string;
   citations: MemoryCitation[]; summary: string;
 };
 
