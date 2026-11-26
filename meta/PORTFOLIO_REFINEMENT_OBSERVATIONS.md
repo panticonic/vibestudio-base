@@ -1,0 +1,7 @@
+# Portfolio refinement observations
+
+The private investigatePortfolio function previously accepted only goal. A root could choose another investigation, but its original observed opening and prior findings were absent from that fresh helper context; subsequent native reads may already be current. Chronological comparison therefore needed explicit functional state flow.
+
+Inventory: workOnDemoPortfolio.nl is the only production parent; private investigatePortfolio.nl owns the observation and reviewer subtree; its types.ts re-exports parent PortfolioReport, whose opening/current/plan/findings already contain the actual observations. natlang.json grants stay on that private subtree. The only crisp callers are portfolioComposition.test.ts. The public entries.json/entriesGenerated.ts contract stays goal -> PortfolioResult; no public service/declaration, renderer, oracle, review or task-goal changes.
+
+The private helper now accepts previous:PortfolioReport|null. The root supplies null initially, and actual prior report on optional refinement. The helper retains its original opening, uses existing findings as context, and refreshes actual current evidence when needed. This does not require refinement or a particular route. Native before/current/authority checks remain unchanged. The actual public loader control performs two model-owned investigations and checks the native stage still receives the original before frame; first-pass read-only/write controls remain.
