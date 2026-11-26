@@ -1,1 +1,1 @@
-export * from "./contract.js";
+export * from "../desktop-readiness-types.js";
