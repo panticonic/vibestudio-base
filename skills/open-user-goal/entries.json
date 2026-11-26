@@ -180,9 +180,9 @@
     "additionalArguments": {}
   },
   "examplesAdoption": {
-    "program": "skills/open-user-goal/reviewExamplesAdoption.ts",
+    "program": "skills/open-user-goal/reviewExamplesAdoption.nl",
     "callable": "reviewExamplesAdoption",
-    "resultType": "AdoptionOutcome",
+    "resultType": "string",
     "skill": "examplesAdoption",
     "parameterNames": [
       "goal"

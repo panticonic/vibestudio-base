@@ -3370,12 +3370,6 @@ export function confirm(id: string, event: string): Promise<AdoptionGate>;
 export function readback(id: string, path: string | null): Promise<AdoptionReadback>;`,
   adoptionHandoff: `/** Record one approved owned Examples composition privately. */
 
-type AdoptionPlan = {
-  disposition: "record-private" | "explain-only" | "hold-authority" | "hold-conflict" | "hold-override" |
-    "hold-epoch" | "hold-closure" | "hold-duplicate" | "hold-stale";
-  finding: string; proof: string[];
-};
-
 type AdoptionReceipt = { path: string; digest: string; event: string };
 
 /** Record one approved owned Examples composition privately. */

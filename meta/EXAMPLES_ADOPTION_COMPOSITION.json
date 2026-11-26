@@ -1,0 +1,292 @@
+{
+  "status": "implemented",
+  "mechanism": "Semantic/effect returns discarded by high-level TS coordinator and private reference route/status/answer masks",
+  "sources": [
+    {
+      "path": "/home/werg/vibe-skill-maintenance-semantic-base/skills/open-user-goal/reviewExamplesAdoption.ts",
+      "sha256": "0db1db338d4914e92634600658b5c81cdf58c515251715fb79faaedbdcdaf0a8"
+    },
+    {
+      "path": "/home/werg/vibe-skill-maintenance-semantic-base/skills/open-user-goal/reviewExamplesAdoption/readAdoptionHandoff.ts",
+      "sha256": "c412bc65d668926c7792e0b2b1a6fce12ea480ac026a8ae9f328bab21b032477"
+    },
+    {
+      "path": "/home/werg/vibe-skill-maintenance-semantic-base/skills/open-user-goal/reviewExamplesAdoption/finishAdoptionHandoff.ts",
+      "sha256": "86e305077711bdac6dd7a4f654c8f4d6c9e2e9bcba450f2e7d371805d7ea647a"
+    },
+    {
+      "path": "/home/werg/vibe-skill-maintenance-semantic-base/skills/open-user-goal/reviewExamplesAdoption/planAdoptionHandoff.nl",
+      "sha256": "1d77abf45733812b84857b5b7663d97042521f21f74ae85e9fcaaeb2cad64486"
+    },
+    {
+      "path": "/home/werg/vibe-skill-maintenance-semantic-sst/skills/system-testing/open-goal-examples-adoption-managed.ts",
+      "sha256": "80446cc1a3b3cb67cea8645e0b6126bbe1d904f4d0725d7f7a76337e54891cd1"
+    },
+    {
+      "path": "/home/werg/vibe-skill-maintenance-semantic-sst/skills/system-testing/open-goal-examples-adoption-worlds.ts",
+      "sha256": "3f569b50ddab9a7af51f353316014289f0c6704d6103a685ff42ffebe1c5f38b"
+    }
+  ],
+  "confirmed": [
+    {
+      "path": "/home/werg/vibe-skill-maintenance-semantic-base/skills/open-user-goal/reviewExamplesAdoption.ts",
+      "line": 19,
+      "finding": "Actual AdoptionReadback return is discarded; final result uses earlier plan/receipt only."
+    },
+    {
+      "path": "/home/werg/vibe-skill-maintenance-semantic-base/skills/open-user-goal/reviewExamplesAdoption/finishAdoptionHandoff.ts",
+      "finding": "Receipt union removes the requested finding whenever a note is recorded; whether mixed questions require a typed answer must be audited per literal goal."
+    }
+  ],
+  "toAudit": [
+    "All literal note-only/query/mixed obligations",
+    "Actor discover/installed/compose/confirm mandatory routes versus actual goal-required observations and native authority",
+    "Reference status/owner/proof path/exact artifact count versus actual current composition/persisted bytes",
+    "Public finding/receipt/current readback type and source-bound Host review contract"
+  ],
+  "preserve": [
+    "Actual native composition validation",
+    "Owned frontier/current-state CAS",
+    "Protected main/source identities",
+    "Actual persisted artifact bytes/digest",
+    "Mandatory native-bound semantic goal review"
+  ],
+  "excluded": [
+    {
+      "family": "PDF",
+      "reason": "layouts.push(await reviewPdfLayout(...)) retains and forwards the semantic results; no directly discarded-return defect."
+    }
+  ],
+  "unchecked": [
+    "Dynamic/namespace/indirect semantic returns in remaining TS roots",
+    "No new public/native controls run for Adoption yet"
+  ],
+  "remaining": "No live native qualification or semantic admission review claimed; originals unchanged.",
+  "implementation": [
+    "Genuine NL root and private investigation/draft hierarchy; actual readback flows into final requested finding.",
+    "Public value is requested finding string, not generic receipt/disposition envelope.",
+    "Actual authority/source/current frontier/native composition/retained bytes remain exact."
+  ],
+  "literalObligations": {
+    "source": "/home/werg/vibe-adoption-semantic-sst/skills/system-testing/open-goal-examples-adoption-worlds.ts",
+    "beforeSha256": "3f569b50ddab9a7af51f353316014289f0c6704d6103a685ff42ffebe1c5f38b",
+    "worlds": [
+      {
+        "id": "garden-layer-certificate",
+        "split": "train",
+        "name": "Garden Preview",
+        "goal": "Keep a private proof of which prepared file actually supplies the Garden Preview panel. Follow the staged Examples composition and leave main alone.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "regency-owner-only",
+        "split": "train",
+        "name": "Regency Exhibit",
+        "goal": "Tell me which layer will serve the Regency Exhibit panel after the reviewed stack is composed. I want an answer in chat and no new artifact.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "whole-replacement-svelte",
+        "split": "train",
+        "name": "Svelte Counter Review",
+        "goal": "Keep a local composition record for Svelte Counter Review only if the Examples layer really owns the whole replacement and an old parent file cannot leak into it. Identify the candidate file that survives.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "orphaned-image-guard",
+        "split": "train",
+        "name": "The Art Alcove",
+        "goal": "The Art Alcove steward wants to know whether the dependency still owns the garden panel and its old source when the Examples draft supplies no replacement. Leave a private readback.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "colliding-post-office",
+        "split": "train",
+        "name": "Post Office Assembly",
+        "goal": "Can the prepared Post Office Assembly be accepted when both layers appear to own its mailbox panel? If ownership never resolves, tell me which native conflict prevents adoption.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "wrong-upstream-house",
+        "split": "train",
+        "name": "Wandering House Review",
+        "goal": "A replacement for Wandering House Review says it takes ownership from a companion template. Check that this is actually the dependency that owns the staged unit before recording anything.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "older-epoch-worker",
+        "split": "train",
+        "name": "Sample Worker Demonstration",
+        "goal": "Can the already staged Sample Worker Demonstration run in the current Examples epoch? Stop if its source layer disagrees, even though the panel list looks ordinary.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "missing-comparator",
+        "split": "train",
+        "name": "Counter Comparator",
+        "goal": "The Exceptions section claims Counter Comparator has its shared formatter. Verify the package closure in the staged composition and withhold a record if the dependency has no owner.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "two-client-declarations",
+        "split": "train",
+        "name": "Travel Lesson",
+        "goal": "Investigate why Travel Lesson's source can be present while the candidate manifest still fails. Report the conflicting native declaration before anyone can adopt the Examples launch.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "inherit-model-slot",
+        "split": "train",
+        "name": "Readback Settings Card",
+        "goal": "Make a private Readback Settings Card that says which model slot still comes through from the Base layer after the candidate tunes its thinking level. Don't treat the whole configuration as replaced.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "setting-override-chat",
+        "split": "train",
+        "name": "Museum Kiosk Settings",
+        "goal": "What thinking level does Museum Kiosk Settings actually use once the Examples layer is applied? Answer here, since we aren't keeping a checklist.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "app-floor-retained",
+        "split": "train",
+        "name": "Vanilla Desk Floor",
+        "goal": "Leave a private note of the effective minimum app version in Vanilla Desk Floor. The top template lists a lower version than its dependency, so compute the version that actually applies.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "transitive-review-helper",
+        "split": "train",
+        "name": "Garden Package Walk",
+        "goal": "List both dependencies that will actually be pulled in for Garden Package Walk. Its public unit only names one directly but I need the full private record for review.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "positive-only-no-authority",
+        "split": "train",
+        "name": "Approval Desk",
+        "goal": "If Approval Desk has the composed sample worker, leave me a private proof. The scope card may say we can inspect it but cannot keep a record, so check before creating anything.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "conditional"
+      },
+      {
+        "id": "restaged-working-frontier",
+        "split": "train",
+        "name": "Arrival Board",
+        "goal": "Please keep the exact adoption evidence for Arrival Board, but only if the semantic review I asked about is still the current one when you hand it over. Pause if it was restaged.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "conditional"
+      },
+      {
+        "id": "parent-file-readback",
+        "split": "train",
+        "name": "Original Office Source",
+        "goal": "Without leaving a file, identify the original Office source that will remain in the composed tree when the review is limited to an Examples presentation layer.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "replace-private-house",
+        "split": "train",
+        "name": "House Candidate Receipt",
+        "goal": "Make a locally retained receipt that says which template owns House Candidate Receipt. The approved replacement is for the whole unit, so keep the existing working deployment undisturbed.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "settings-two-slots",
+        "split": "train",
+        "name": "Conservatory Runtime",
+        "goal": "For Conservatory Runtime, keep the effective model and thinking-level defaults side by side in a private evidence file so the review board can tell whether the slide's settings claim is true.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "held-ownership-duplicate",
+        "split": "test",
+        "name": "A Keep Without a Deed",
+        "goal": "Two otherwise plausible layers include the keep's exact panel. Confirm whether A Keep Without a Deed has a valid owner before making any private receipt.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "held-installed-floor",
+        "split": "test",
+        "name": "Listener App Check",
+        "goal": "I am on a call about Listener App Check. Which minimum app version should I quote for this stack, after joining the dependent Examples manifest with the stronger Base requirement? I don't need a file.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      },
+      {
+        "id": "held-nested-dependency-receipt",
+        "split": "test",
+        "name": "Map Shelf Handoff",
+        "goal": "Write a local handoff that shows how the Map Shelf Handoff's staged copy brings in its adapter and the adapter's type package. I need both pulled-in units, and no adoption.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "held-replacement-old-fragment",
+        "split": "test",
+        "name": "Night Exhibit Record",
+        "goal": "Check that the Night Exhibit Record actually contains the Examples package and its staged scene source after the whole replacement. Leave the candidate file proof privately without creating an installation.",
+        "requestedReturnRequired": false,
+        "requestedArtifact": "required"
+      },
+      {
+        "id": "held-dependency-swap-changed",
+        "split": "test",
+        "name": "The Superseded Graph",
+        "goal": "The Superseded Graph compiles in the earlier review. Keep a record only if that semantic frontier still holds after the next update; otherwise identify the live review as a hold.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "conditional"
+      },
+      {
+        "id": "held-client-source-collision",
+        "split": "test",
+        "name": "Duplicate Desk Registration",
+        "goal": "Duplicate Desk Registration has one repository owner on paper but apparently incompatible client declarations. Determine whether the composed manifest can be used, even if someone granted a private report.",
+        "requestedReturnRequired": true,
+        "requestedArtifact": "none"
+      }
+    ],
+    "literalGoalsIdsSplitsUnchanged": true,
+    "rationale": "A requested private artifact may contain its requested findings. Chat/check-only questions still require actual returned findings. Permission and expected disposition never determine whether a new note was requested."
+  },
+  "actualTests": {
+    "public": {
+      "unit": "vibe-adoption-public-20261126a",
+      "passed": 3,
+      "seconds": 129.51,
+      "peakGiB": 3.6,
+      "boundary": "Actual public ProgramLoader+joint evaluator+scripted gateway, no external model call."
+    },
+    "native": {
+      "unit": "vibe-adoption-native-20261126b",
+      "passed": 29,
+      "boundary": "Real FS/canonical composition and scratch writer with controlled Native VCS/CAS ports; not live native VCS qualification."
+    },
+    "host": {
+      "unit": "vibe-adoption-host-binding-20261126b",
+      "passed": 39
+    },
+    "canonicalDeclarations": {
+      "unit": "vibe-adoption-declarations-20261126a",
+      "status": "generation +real check passed"
+    }
+  }
+}
