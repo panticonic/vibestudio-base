@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { observeNativeActions } from "./native-action-journal.js";
 const owner = { contextId: "owned-context", runId: "actual-teacher-run" };
 describe("independent accepted-port observations", () => {
+  it("preserves the Core synchronous/async native-call contract and ordinary signature metadata", async () => {
+    const marker = Symbol.for("natlang.native-call-kind");
+    const native = { async read(id: string) { return id; }, immediate(value: number) { return value; } };
+    const observed = observeNativeActions({ native }, owner);
+    expect((observed.services.native.read as unknown as Record<symbol, unknown>)[marker]).toBe("promise");
+    expect((observed.services.native.immediate as unknown as Record<symbol, unknown>)[marker]).toBe("synchronous");
+    expect(observed.services.native.read.name).toBe(native.read.name);
+    expect(observed.services.native.read.length).toBe(native.read.length);
+    expect(await observed.services.native.read("owned")).toBe("owned");
+    const annotated = Object.defineProperty((value: number) => Promise.resolve(value), marker, { value: "promise" });
+    const explicit = observeNativeActions({ native: { annotated } }, owner);
+    expect((explicit.services.native.annotated as unknown as Record<symbol, unknown>)[marker]).toBe("promise");
+  });
   it("retains the actual owner and opt-out selected at construction", () => {
     const identity = { ...owner }, options = { enabled: true };
     const observed = observeNativeActions({ native: { read() { return 1; } } }, identity, options);

@@ -107,6 +107,11 @@ export function observeNativeActions<T extends Readonly<Record<string, object>>>
           return completed(value);
         } catch (error) { return failed(error); }
       } };
+      const callKind = Object.getOwnPropertyDescriptor(operation, Symbol.for("natlang.native-call-kind"))?.value ??
+        (Object.getPrototypeOf(operation)?.constructor?.name === "AsyncFunction" ? "promise" : "synchronous");
+      Object.defineProperty(methods[method]!.value, Symbol.for("natlang.native-call-kind"), { value: callKind });
+      Object.defineProperty(methods[method]!.value, "name", { value: operation.name, configurable: true });
+      Object.defineProperty(methods[method]!.value, "length", { value: operation.length, configurable: true });
     }
     wrapped[service] = { ...entry, value: Object.defineProperties(Object.create(Object.getPrototypeOf(target)), methods) };
   }
