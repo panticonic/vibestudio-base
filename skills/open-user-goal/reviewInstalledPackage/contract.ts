@@ -19,7 +19,11 @@ export type PackageObservation = {
   catalog: { source: string; name: string; kind: string } | null;
   baselineValue: PackageValue; workingValue: PackageValue;
   /** Native join against the actual worker declaration, class, protocol and repository. */
-  declaredReceiverMatches: boolean; scopeMatches: boolean; targetFieldMatches: boolean;
+  declaredReceiverMatches: boolean;
+  /** Exact review scope joins current source, field/key, revision and digests; independent of a restore grant. */
+  scopeMatches: boolean;
+  /** Equality of the current selected manifest value to its protected baseline, not plan ownership or permission. */
+  protectedValueMatchesBaseline: boolean;
   suiteBlockedBy: string | null;
   suiteRequest: SuiteRequest | null;
 };
