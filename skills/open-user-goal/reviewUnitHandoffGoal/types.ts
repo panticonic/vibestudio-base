@@ -1,7 +1,7 @@
 import type { UnitReview } from "./reviewDesign/installed/types.js";
-import type { UnitIdentityReport } from "./reviewIdentity/installed/types.js";
-import type { UnitHandoffPlan, UnitHandoffObservation, UnitLifecycleObservation } from "./contract.js";
-export type { UnitReview, UnitIdentityReport };
+import type { UnitIdentityReport, UnitIdentityChange } from "./reviewIdentity/installed/types.js";
+import type { UnitHandoffUnit, UnitHandoffPlan, UnitHandoffObservation, UnitLifecycleObservation } from "./contract.js";
+export type { UnitReview, UnitIdentityReport, UnitIdentityChange };
 export type { UnitHandoffUnit, UnitHandoffPlan, UnitHandoffObservation, UnitLifecycleObservation } from "./contract.js";
 
 export type UnitLifecycleFinding = {
@@ -15,13 +15,5 @@ export type UnitDesignHandoff = {
   native: UnitReview | null;
   lifecycle: UnitLifecycleFinding | null;
 };
-export type UnitHandoffReport = {
-  decision: "reviewed" | "staged" | "held";
-  plan: UnitHandoffPlan;
-  observation: UnitHandoffObservation | null;
-  design: UnitDesignHandoff | null;
-  identity: UnitIdentityReport | null;
-  reason: string;
-};
-
-export type UnitHandoffResult={decision:"reviewed"|"staged"|"held";path:string|null;design:UnitDesignHandoff|null;identity:UnitIdentityReport|null;reason:string};
+export type UnitHandoffFindings = { explanation:string; unit:UnitHandoffUnit|null; draft:UnitIdentityChange|null };
+export type UnitHandoffInquiry = { inventory:UnitHandoffUnit[]; plan:UnitHandoffPlan; observation:UnitHandoffObservation|null; design:UnitDesignHandoff|null };

@@ -1,11 +1,11 @@
 ---
-description: Compile a concise handoff with preserved exact manifest, icon and lifecycle receipts.
+description: Explain the unit handoff using actual acquired manifest, lifecycle and identity evidence.
 args:
   goal: string
-  plan: UnitHandoffPlan
-  observation: UnitHandoffObservation
-  design: UnitDesignHandoff | null
+  inquiry: UnitHandoffInquiry
   identity: UnitIdentityReport | null
-returns: UnitHandoffReport
+returns: UnitHandoffFindings
 ---
-Return the exact plan, observation, design and identity. Report staged only after the installed icon skill verifies its working readback. Report held for a missing, invalid or conflicting required observation, unavailable requested icon or requested draft whose authorization conditions failed. Otherwise report reviewed, including a matching existing icon and read-only design alternatives. Use reason to answer the user's request with the correct revision and next step. Protect main and preserve the evidence established by each stage.
+Answer the user's actual question in explanation. Separate the current working and protected manifest, catalog availability, exact artwork and any independently observed retained build or live process. A draft exists only after an actual verified native change; a valid source manifest, inspection grant or proposed symbol is not a deployment or an edit. If a requested symbol is absent, permission is missing, the revision changed or the unit is ambiguous, explain that actual limit instead of manufacturing a replacement or another unit.
+
+Return the actual unit from inquiry.observation when one was established, otherwise null. Return identity.change only when it is an actual verified native draft, otherwise null. Preserve useful read-only findings even when an attempted change is refused. Do not copy private planning status, report trees or evidence-ID lists into the public answer merely to satisfy a route. Do not claim an unperformed inspection or action.

@@ -610,9 +610,9 @@
     "additionalArguments": {}
   },
   "unit-handoff": {
-    "program": "skills/open-user-goal/reviewUnitHandoffGoal.ts",
+    "program": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
     "callable": "reviewUnitHandoffGoal",
-    "resultType": "UnitHandoffResult",
+    "resultType": "UnitHandoffFindings",
     "skill": "unitHandoff",
     "parameterNames": [
       "goal"

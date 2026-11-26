@@ -20,7 +20,7 @@
     ],
     "unitHandoff": [
       "reviewUnitHandoffGoal/reviewDesign.nl",
-      "reviewUnitHandoffGoal.ts"
+      "reviewUnitHandoffGoal.nl"
     ],
     "boardMigration": [
       "reviewBoardMigration/readMigrationTarget.ts",
@@ -184,8 +184,7 @@
         "reviewUnitHandoffGoal/reviewIdentity/installed"
       ],
       "types": [
-        "UnitHandoffReport",
-        "UnitHandoffResult"
+        "UnitHandoffFindings"
       ]
     },
     "prepareContentProject": {

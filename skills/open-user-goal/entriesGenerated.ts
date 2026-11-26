@@ -611,9 +611,9 @@ export default {
     "additionalArguments": {}
   },
   "unit-handoff": {
-    "program": "skills/open-user-goal/reviewUnitHandoffGoal.ts",
+    "program": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
     "callable": "reviewUnitHandoffGoal",
-    "resultType": "UnitHandoffResult",
+    "resultType": "UnitHandoffFindings",
     "skill": "unitHandoff",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"1a6c2f056214d23853bdb22a84e06a268a66faab0386c7aaf36d35cec79b77c3"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6688e599ceaaef19fc8a858741378d971bbbb9f9d4fb882c4247672ab5483a55"};
