@@ -1,0 +1,52 @@
+{
+  "mechanism": "Model-owned goal composition with exact TS native effects and private semantic hierarchies",
+  "domains": {
+    "audience": {
+      "root": "skills/open-user-goal/chooseAudienceResponse.ts",
+      "helpers": "chooseAudienceResponse/{decideAudienceFormat,answerFromRecord,prepareAudienceVisual}; mounted workspace and visualize",
+      "nativeConsumer": "open-goal-audience-response-managed.ts",
+      "returnContribution": "chooseAudienceResponse/answerFromRecord.nl",
+      "newRoot": "skills/open-user-goal/chooseAudienceResponse.nl"
+    },
+    "buildIncident": {
+      "root": "skills/open-user-goal/reviewRetainedBuildIncident.ts",
+      "helpers": "reviewRetainedBuildIncident/{selectCheckpoints,performance,decideFinding,shouldRetainIncident}; exact discover/open/stage",
+      "nativeConsumer": "open-goal-build-incidents-managed.ts",
+      "returnContribution": "reviewRetainedBuildIncident/decideFinding.nl",
+      "newRoot": "skills/open-user-goal/reviewRetainedBuildIncident.nl"
+    },
+    "workspaceShare": {
+      "root": "skills/open-user-goal/reviewWorkspaceShare.ts",
+      "helpers": "reviewWorkspaceShare/{identifyShare,reviewSharePolicy}; exact discover/read/checkScope/stage",
+      "nativeConsumer": "open-goal-workspace-share-managed.ts",
+      "returnContribution": "reviewWorkspaceShare/reviewSharePolicy.nl",
+      "newRoot": "skills/open-user-goal/reviewWorkspaceShare.nl"
+    }
+  },
+  "sharedConsumers": [
+    "skills/open-user-goal/natlang.json entryContracts/mounts/serviceScopes",
+    "skills/open-user-goal/types.ts public aliases",
+    "canonical public entry declaration generator",
+    "Host authored invocation/export/observed-content binding (same public application return, no new proof fields)",
+    "SST native verifier/qualifier, outcome roles and declared literal goal requirements",
+    "Python/Node NativeIR readers (schema unchanged)"
+  ],
+  "excluded": {
+    "historicalMeta": "Immutable previous application-value migration inventories; superseded facts stay historical",
+    "engines": "No model protocol, sampling or serving change; existing Natlang program execution supports every engine unchanged",
+    "thinRelays": "News, EvalHandoff and ProblemReport already delegate genuine NL composition; no count-only rewriting"
+  },
+  "validationPlan": [
+    "actual public ProgramLoader hierarchical choices with existing SDK, no paid inference",
+    "canonical all-entry declarations/380+ program check",
+    "real native factory positive/negative checks for request versus permission",
+    "preserve actual receipts, requested values, scope/head/native negative controls"
+  ],
+  "status": "Three domain roots converted to model-owned composition; actual native/Host controls passed; public compiler controls in progress.",
+  "canonicalGeneration": {
+    "entries": true,
+    "serviceDeclarations": 380,
+    "nonmutatingCheckTests": 2
+  },
+  "nativeControlsPassed": 7
+}

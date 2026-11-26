@@ -1337,10 +1337,20 @@ export function open(id: string): Promise<RetainedProfile>;`,
 
 type IncidentFocus = "build-time" | "initial-payload" | "cache" | "compiler" | "compare" | "runtime-memory";
 
+type BuildIncidentFinding = "build-time" | "initial-payload" | "cache" | "compiler" | "compare" | "held";
+
+type Finding = BuildIncidentFinding;
+
+type BuildIncidentBlocker = "no-approved-current-checkpoint" | "no-comparable-baseline" | "wrong-measurement-boundary" | "native-build-failed";
+
+type Blocker = BuildIncidentBlocker;
+
+type IncidentDisposition = { finding: Finding; blocker: Blocker | null; reason: string };
+
 type IncidentReceipt = { path: string; bytes: number; sha256: string; checkpoints: string[] };
 
 /** Stage independently verified retained build evidence in owned local scratch. */
-export function stage(checkpoints: string[], focus: IncidentFocus):
+export function stage(checkpoints: string[], focus: IncidentFocus, analysis: IncidentDisposition):
       Promise<IncidentReceipt | null>;`,
   buildPerformance: `/** Profile the caller-assigned workspace unit through the native build service. */
 

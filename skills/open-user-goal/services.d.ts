@@ -113,7 +113,7 @@ declare module "natlang:services" {
     open(id: string): Promise<import("./reviewRetainedBuildIncident/contract.js").RetainedProfile>;
   };
   export const buildIncidentHandoff: {
-    stage(checkpoints: string[], focus: import("./reviewRetainedBuildIncident/contract.js").IncidentFocus):
+    stage(checkpoints: string[], focus: import("./reviewRetainedBuildIncident/contract.js").IncidentFocus, analysis: import("./reviewRetainedBuildIncident/types.js").IncidentDisposition):
       Promise<import("./reviewRetainedBuildIncident/contract.js").IncidentReceipt | null>;
   };
   export const mobileContinuity: {
