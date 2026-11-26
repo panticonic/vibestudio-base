@@ -100,5 +100,6 @@ export async function assessObservedApplicationOutcome<T extends {passed:boolean
    }
   }else unboundReturnContributions.push({checks:failed,reason:"application-value-does-not-match-recorded-root"});
  }
- return assessSemanticOutcome({...verification,incorrectReturnValues,unreviewedReturnValues,unboundReturnContributions},contract);
+ return assessSemanticOutcome({...verification,incorrectReturnValues,unreviewedReturnValues,unboundReturnContributions,
+  ...(!contract.returnedValue.required&&contract.returnedValue.trainingEvidence==="format-only"?{unreviewedOptionalReturnPresent:actualValue!==null&&actualValue!==undefined}:{})},contract);
 }

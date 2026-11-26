@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {expect,it,vi} from "vitest";
 import {observeInvocation} from "./observed-invocation.js";
 import {assessObservedApplicationOutcome} from "./observed-application-outcome.js";
-import {assessSemanticOutcome} from "./semantic-outcome-contract.js";
+import {assessSemanticOutcome,composeSemanticOutcomes} from "./semantic-outcome-contract.js";
 vi.mock("@vibestudio/content-addressing",()=>({sha256HexSyncText:(text:string)=>createHash("sha256").update(text).digest("hex")}));
 const definition={name:"actualApplication",source:"fixture/application.ts"};
 function recorded(value:unknown){
@@ -131,4 +131,11 @@ it("preserves an already bound optional readout hold through same-value re-asses
  const again=await assessObservedApplicationOutcome(first,rules,value);
  expect(again.outcomeDimensions.returnedValue.unreviewedReturns).toEqual(first.outcomeDimensions.returnedValue.unreviewedReturns);
  await expect(assessObservedApplicationOutcome(first,rules,"different")).rejects.toThrow(/Rebound unreviewed/);
+});
+
+it("permits a composed native effect when its observed optional return is actually null",async()=>{
+ const rules={...optional,returnedValue:{...optional.returnedValue,trainingEvidence:"format-only" as const}};
+ const observed=await assessObservedApplicationOutcome({passed:true,checks:{nativeWrite:true,answer:true}},rules,null,recorded(null));
+ expect(observed.unreviewedOptionalReturnPresent).toBe(false);
+ expect(composeSemanticOutcomes(observed).passed).toBe(true);
 });
