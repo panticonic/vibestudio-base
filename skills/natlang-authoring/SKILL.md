@@ -107,7 +107,10 @@ children. Items of one folder do not see each other: when `inspect` must call `d
 **Services.** A program gets exactly the services its `services.d.ts` declares
 (`declare module 'natlang:services' { export const serverLog: ... }`) or its TypeScript modules import from
 `natlang:services`, each a narrowed view of the calling eval's own binding: the caller's approvals and authority
-checks apply unchanged. A program returns proposals for consequential effects; the caller commits them.
+checks apply unchanged. Natlang functions use admitted service names directly, such as `serverLog.query(...)`;
+the host cell's `services.serverLog` namespace is a separate API. TypeScript program modules import named
+services from `natlang:services`. A program can invoke admitted operations, including native effects
+when the user’s goal calls for them and caller authority permits them. Consume the actual return values: a proposal or refused attempt is not a committed effect.
 
 For a shared program with alternative workflows, set `"serviceBinding": "explicit"` in its
 `natlang.json`. In that mode, `natlang.load(path, { services: {...} })` binds only the declared
