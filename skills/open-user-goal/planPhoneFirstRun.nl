@@ -4,7 +4,7 @@ args:
   goal: string
 returns: PhoneFirstRunFinding
 ---
-Determine what the user needs to establish about this phone's first run or next setup step. Locate the current assigned rehearsal and use the evidence-reading hierarchy to inspect its actual ownership, startup phases and installed provider. A similarly named archived or foreign pairing cannot establish current readiness.
+Determine what the user needs to establish about this phone's first run or next setup step. Locate the current assigned rehearsal and use readPhoneEvidence(goal, card, null) for a coherent investigation. For refinement, pass the actual previous evidence. The investigation chooses relevant observations; it need not read every subsystem for a narrow question. A similarly named archived or foreign pairing cannot establish current readiness.
 
 Only a non-null setupRequest obtained from the actual current assignment supplies the installed read-only resume capability. Pass that value itself; do not construct an operation ID or setup request from the goal, target name or another receipt. A missing capability means explain the supported next step from the available evidence.
 

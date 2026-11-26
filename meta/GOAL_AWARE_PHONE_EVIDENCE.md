@@ -1,0 +1,7 @@
+# Goal-aware phone investigation
+
+Inventory before change: planPhoneFirstRun.nl is the public semantic parent. Its private readPhoneEvidence.nl accepted only an ID and prescribed all three readers, while explainPhoneFirstRun.nl accepted only one evidence snapshot. PhoneFirstRunEvidence in shared types required both startup/provider fields. The only crisp callers are phoneFirstRunComposition.test.ts; old metadata inventories are historical, not live callers. The paired Native factory also required phases, provider, and an owned resume even when the literal question did not need them.
+
+The private investigation now receives goal, actual card and actual previous evidence. It selects relevant exact TS readers, marks unread startup/provider values null, and distinguishes unread from unavailable. Conclusion receives optional actual previous evidence for a before/after comparison. The public goal -> PhoneFirstRunFinding signature and service authority stay unchanged. Native bodies and caller masks do not prescribe a route.
+
+Actual public compiler/loader/evaluator controls: three passed in104.17s/2.7GiB, covering startup-only evidence with no provider read, a narrow setup-only question with just current assignment, and a second investigation carrying actual first observations into comparison. No pairing/mutation was permitted or executed; no provider/model inference. close is awaited so test-owned compiler state joins. Paired SST32 controls passed, full Native replay/live reviewer behavior remains separate.
