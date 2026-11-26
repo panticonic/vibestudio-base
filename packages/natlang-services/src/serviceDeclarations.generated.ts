@@ -2361,7 +2361,7 @@ type RouteAuthorityObservation={operationId:string;decision:string;leaves:{capab
 type RouteAuthorityReport={status:string;protectedLeaves:RouteAuthorityScope[];held:string[];
   reviews:{observation:RouteAuthorityObservation;outside:RouteAuthorityScope[];disposition:string}[]};
 
-type RouteChoice={routeId:string;execute:boolean;retain:boolean;reason:string};
+type RouteChoice={routeId:string|null;execute:boolean;retain:boolean;reason:string};
 
 type ExactRouteRecord={basis:EvidenceBasis;coordinate:string;field:string;value:string;fileHash:string};
 
@@ -2467,7 +2467,7 @@ export function read(id:string):Promise<ClaimPacket|null>;
 export function observe(id:string):Promise<ClaimEvidence|null>;`,
   workspaceClaimHandoff: `/** Retain the explicitly authorized private claim audit. */
 
-type ClaimReviewChoice={id:string;retain:boolean};
+type ClaimReviewChoice={id:string|null;retain:boolean};
 
 type ClaimRequirement={id:string;text:string};
 
@@ -2525,7 +2525,7 @@ type RetainedBranch = { repository:string; remote:string|null; branch:string|nul
 type DeliveryScope={id:string;repository:string;remote:string;branch:string;reviewSince:number;retained:RetainedBranch|null;
   retainedDigest:string|null;specPath:string;notePath:string};
 
-type BridgePlan={id:string;intent:"review"|"commit";handoff:boolean};
+type BridgePlan={id:string|null;intent:"review"|"commit";handoff:boolean};
 
 type CandidateCoordinates={contextId:string;eventId:string};
 
@@ -2566,7 +2566,7 @@ type BridgeDecision={status:"reviewed"|"hold"|"commit";explanation:string};
 
 type BranchPrivateNote={path:string;digest:string};
 
-type BridgeDeliveryReport={scope:DeliveryScope;plan:BridgePlan;local:LocalGitReview;spec:LocalFileReview;note:LocalFileReview;
+type BridgeDeliveryReport={scope:DeliveryScope;plan:BridgePlan;local:LocalGitReview|null;spec:LocalFileReview|null;note:LocalFileReview|null;
   branch:BranchAssessment;decision:BridgeDecision;commit:LocalDeliveryReceipt|null;handoff:BranchPrivateNote|null};
 
 /** Commit or retain local branch delivery in the explicitly authorized scope. */
