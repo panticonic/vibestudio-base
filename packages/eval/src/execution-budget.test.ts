@@ -235,3 +235,13 @@ it("fails closed on retained library functions carrying a different invocation's
  // Whole-run-only callers retain their existing imported-module semantics.
  expect(await executeSandbox('return require("@workspace/guest").run()',{...options,executionTimeoutMs:undefined})).toMatchObject({success:true,returnValue:42});
 });
+
+it("does not lose a retained library guard owner when the host copies its registry between cells",async()=>{
+ const realm=owned(),modules:Record<string,unknown>={};
+ const requireFor=(map:Record<string,unknown>)=>(id:string)=>{if(id in map)return map[id];throw Error(id);};
+ const loadImport=async()=>({bundle:'module.exports={run:()=>42}',format:"cjs",requiredModules:[]} as never);
+ const options={...base,moduleMap:modules,require:requireFor(modules),loadImport,compileFunction:realm.compile,executionTimeoutMs:100};
+ expect(await executeSandbox('import {run} from "@workspace/guest";return run()',options)).toMatchObject({success:true,returnValue:42});
+ const next={...modules};
+ expect(await executeSandbox('return require("@workspace/guest").run()',{...options,moduleMap:next,require:requireFor(next)})).toMatchObject({success:false,failureKind:"infrastructure",failureCode:"execution_budget_cached_module_unsupported"});
+});

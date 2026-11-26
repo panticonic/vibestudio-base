@@ -1,0 +1,15 @@
+{
+  "schema": "vibestudio.retained-library-budget-identity/1",
+  "parentBase": "b61caea43e40789b50ff8848983df8bf3557ea7f",
+  "actualHostConsumer": "packages/builtin/src/eval-engine/EvalDO.ts:3481 spreads this.moduleMap into each runModuleMap",
+  "fix": "track actual export namespace identity in a weak map as well as registry identity; different budget owners fail closed even across registry copies",
+  "control": "actual compiled function exported from first invocation copied to next registry is rejected before reuse; default whole-only path remains available",
+  "unit": "vibe-guest-retained-namespace-20261126a",
+  "actualTestsPassed": 105,
+  "actualSeconds": 5.745,
+  "actualPeakMiB": 355.2,
+  "remainingOpen": [
+    "scope-stored escaped functions and existing default imported-body current-owner checkpoint rebinding",
+    "actual Workerd native replay of original failed74 policies"
+  ]
+}
