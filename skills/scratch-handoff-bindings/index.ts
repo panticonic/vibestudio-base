@@ -53,6 +53,13 @@ async function readBytes(
   }
 }
 
+/** Exact line coordinates exposed by the native scratch source reader. Whitespace inside a line is evidence. */
+export function scratchHandoffSourceLines(text: string): string[] {
+  const lines = text.split(/\r?\n/u);
+  if (lines.at(-1) === "") lines.pop();
+  return lines;
+}
+
 /** Bind the current workspace's runtime filesystem and a single caller-owned assignment. */
 export function bindScratchHandoff(
   fs: ScratchFs,
@@ -91,8 +98,7 @@ export function bindScratchHandoff(
           if (bytes.length > maxSourceBytes) return null;
           const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
           if (text.includes("\0")) return null;
-          const lines = text.split(/\r?\n/u);
-          if (lines.at(-1) === "") lines.pop();
+          const lines = scratchHandoffSourceLines(text);
           return { id, lines };
         } catch {
           return null;
