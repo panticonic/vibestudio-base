@@ -222,7 +222,7 @@
       "types": [
         "WelcomeGoalReport",
         "WelcomeInquiry",
-        "WelcomeResult"
+        "WelcomeFindings"
       ]
     },
     "reviseCoordinatedDocuments": {

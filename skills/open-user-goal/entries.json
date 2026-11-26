@@ -392,7 +392,7 @@
   "personal-welcome": {
     "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
     "callable": "workOnPersonalWelcomeGoal",
-    "resultType": "WelcomeResult",
+    "resultType": "WelcomeFindings",
     "skill": "personalWelcome",
     "parameterNames": [
       "goal"

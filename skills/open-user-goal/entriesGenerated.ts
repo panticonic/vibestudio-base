@@ -393,7 +393,7 @@ export default {
   "personal-welcome": {
     "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
     "callable": "workOnPersonalWelcomeGoal",
-    "resultType": "WelcomeResult",
+    "resultType": "WelcomeFindings",
     "skill": "personalWelcome",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"707f22f422959d7dec5b87ff39315871fd56cb7bf25697b3dae79dd922c56834"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"f9bc0dcc3e39b3a1f7f1a2fd382781e356ae9c501f4029c308d067863e4bdfd3"};

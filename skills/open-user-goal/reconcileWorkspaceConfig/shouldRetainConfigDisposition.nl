@@ -7,3 +7,5 @@ args:
 returns: boolean
 ---
 Return true only when the user explicitly authorizes a private local record of this configuration review and every condition they attach is satisfied by the actual outcome. A request for an explanation, a deployment, a setting change or a different workspace does not authorize this private record. Respect a requested hold. Return false otherwise.
+
+An explicit request to record findings privately remains a recording request when the same goal also asks a question or prohibits applying configuration/source changes. A hold on a rollout or source mutation is not by itself a prohibition on an explicitly requested owned scratch diagnostic. This boolean is intent and condition assessment, not a receipt proving that recording occurred.
