@@ -303,7 +303,7 @@ export default {
   "desktopReadiness": {
     "program": "skills/open-user-goal/reviewDesktopReadiness.ts",
     "callable": "reviewDesktopReadiness",
-    "resultType": "DesktopReadinessOutcome",
+    "resultType": "DesktopReadinessFindings",
     "skill": "desktopReadiness",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"f9a787a75cee131d26c7f6437272cf115a5bcc17120f8c3f374a1b8f9fd293d7"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"cd36b8b613b9feaee55f15689f69565bd2d82355024c807551eb34422f4e8d4e"};

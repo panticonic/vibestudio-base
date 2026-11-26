@@ -302,7 +302,7 @@
   "desktopReadiness": {
     "program": "skills/open-user-goal/reviewDesktopReadiness.ts",
     "callable": "reviewDesktopReadiness",
-    "resultType": "DesktopReadinessOutcome",
+    "resultType": "DesktopReadinessFindings",
     "skill": "desktopReadiness",
     "parameterNames": [
       "goal"
