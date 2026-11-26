@@ -9,7 +9,8 @@ import type {
 } from "../scratch-handoff/types.js";
 
 const maxSourceBytes = 24 * 1024;
-const maxArtifactBytes = 64 * 1024;
+/** Maximum UTF-8 bytes accepted and independently read back by the native scratch writer. */
+export const maxScratchArtifactBytes = 64 * 1024;
 
 type ScratchFs = Pick<RuntimeFs, "mkdtemp" | "rename" | "rm"> & {
   writeFile(path: string, data: string): Promise<void>;
@@ -101,7 +102,7 @@ export function bindScratchHandoff(
     scratchHandoffWrite: {
       async stage(body: string): Promise<ScratchReceipt | null> {
         const expected = new TextEncoder().encode(body);
-        if (!expected.length || expected.length > maxArtifactBytes)return null;
+        if (!expected.length || expected.length > maxScratchArtifactBytes)return null;
         if(staged){
           if(staged.body!==body)return null;
           try{

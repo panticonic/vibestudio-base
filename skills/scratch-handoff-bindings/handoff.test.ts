@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { prepare } from "../scratch-handoff/handoffChecks.js";
-import { bindScratchHandoff } from "./index.js";
+import { bindScratchHandoff, maxScratchArtifactBytes } from "./index.js";
 
 it("writes exact UTF-8 into a fresh scratch directory without touching the source", async () => {
   const root = await mkdtemp(join(tmpdir(), "vibe-scratch-workflow-test-"));
@@ -81,5 +81,17 @@ it("coalesces exact concurrent staging and retries a failed uncommitted scratch 
   const [a,b]=await Promise.all([binding.scratchHandoffWrite.stage("native body"),binding.scratchHandoffWrite.stage("native body")]);
   expect(a).not.toBeNull();expect(b).toEqual(a);expect(writes).toBe(2);
   expect(await binding.scratchHandoffWrite.stage("foreign body")).toBeNull();
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
+it("enforces the exported actual artifact bound on UTF-8 bytes at publication and readback",async()=>{
+ const root=await mkdtemp(join(tmpdir(),"vibe-scratch-limit-test-"));
+ try{
+  const source=join(root,"source.txt");await writeFile(source,"Actual owned input");
+  const binding=bindScratchHandoff({open,rename,rm,writeFile,mkdtemp:prefix=>mkdtemp(join(root,prefix??"artifact"))},{goal:"Retain the requested private artifact",questions:["What was retained?"],sources:[{id:"source",path:source}]});
+  const body="é".repeat(maxScratchArtifactBytes/2);
+  expect(Buffer.byteLength(body)).toBe(maxScratchArtifactBytes);
+  expect(await binding.scratchHandoffWrite.stage(body+"é")).toBeNull();
+  const receipt=await binding.scratchHandoffWrite.stage(body);expect(receipt).not.toBeNull();expect(receipt!.bytes).toBe(maxScratchArtifactBytes);expect(await readFile(receipt!.path,"utf8")).toBe(body);
  }finally{await rm(root,{recursive:true,force:true});}
 });
