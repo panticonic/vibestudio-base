@@ -487,12 +487,13 @@ export * from "./reviewPtyContinuity/contract.js";
 export * from "./reviewDevelopmentAudit/contract.js";
 export * from "./recoverContentArchive/contract.js";
 export * from "./reviewSystemRelease/contract.js";
+export type { ComparedRelease, EvaluatedReleaseCases, SystemReleaseInvestigation } from "./reviewSystemRelease/types.js";
 export type { PanelSourceMigrationOutcome } from "./migratePanelSource/types.js";
 export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
 export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
 export * from "./generateOwnedIllustration/contract.js";
 export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";
-export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";
+
 export type { DeployedInterfaceOutcome } from "./reviewDeployedInterface/types.js";
 export * from "./workOnEvalHandoffGoal/journal/types.js";
 export * from "./workOnProgramRunGoal/runtime/types.js";

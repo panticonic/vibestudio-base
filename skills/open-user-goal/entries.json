@@ -400,7 +400,7 @@
     "additionalArguments": {}
   },
   "installed-package": {
-    "program": "skills/open-user-goal/reviewInstalledPackage.ts",
+    "program": "skills/open-user-goal/reviewInstalledPackage.nl",
     "callable": "reviewInstalledPackage",
     "resultType": "InstalledPackageOutcome",
     "skill": "installedPackage",
@@ -530,7 +530,7 @@
     "additionalArguments": {}
   },
   "system-release": {
-    "program": "skills/open-user-goal/reviewSystemRelease.ts",
+    "program": "skills/open-user-goal/reviewSystemRelease.nl",
     "callable": "reviewSystemRelease",
     "resultType": "SystemReleaseOutcome",
     "skill": "systemRelease",
