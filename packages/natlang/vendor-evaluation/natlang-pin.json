@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "9a5a501782a26124ee4e3c2b651bfb1435621f52",
+  "commit": "53109e1d2b766f867d08a59217b8141ddec33192",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -49,7 +49,7 @@
     "evaluation/types/compiler/inline.d.ts": "017f6c0e9a1a485cc965960727bc335989c42caa11abd2fdb09b83a04f00985d",
     "evaluation/types/compiler/intrinsics.d.ts": "08b02d29e1703c50ab39f02437f6a45aee1e27f513dfc3ae90c122b6dcbb5610",
     "evaluation/types/compiler/neuralese.d.ts": "3a85bfacfc8211f77b2333d9622790f2f9f4ed81c8badbbb68987930f2000ba5",
-    "evaluation/types/compiler/project.d.ts": "4b5abe213118c37f90a80412a9a7de3fd065f91db7ead38cd1d209edec9c0eb9",
+    "evaluation/types/compiler/project.d.ts": "f6fbe85d731dea3e59ecfef2fdafb4ba0c981ace017b9452b36ec70aee63aaa6",
     "evaluation/types/compiler/refined-slots.d.ts": "3db0c5f5e9a3a6af7e1c846fb76cbbeef03b3798ee29c162ecaa82bd81042483",
     "evaluation/types/compiler/rewrites.d.ts": "4d8f1a091d11e89583cbff7770f9012a477874cfd26761e49493401defcdc50f",
     "evaluation/types/compiler/runtime-specifier.d.ts": "92dc2c4b29030b1c171b0f0772137398c1aa2b38e50c8e92f82df17d66c36677",
@@ -152,19 +152,20 @@
     "evaluation/types/runtime/jit.d.ts": "f70e464cb5b186bc74a107f974ef39d72c638559979d30de6c31a48c7dd5fb1d",
     "evaluation/types/runtime/kernel.d.ts": "48a4f88ddde8c5eda747fd4d7d91df815aac7bb015f115ad5346b430bc184819",
     "evaluation/types/runtime/linked-types.d.ts": "643aa879e7a57ea51c58bb8c90fc68942bf05b5b360a49f78b1083ed910567e9",
-    "evaluation/types/runtime/loader.d.ts": "09c39fb81a2304a520067e12fef4f572bad942835196afbdb2db0a7c70136144",
+    "evaluation/types/runtime/loader.d.ts": "8a737aca9b0783e3e7d7c12fc31ce50b29a446b84847394a984659481b605b4a",
     "evaluation/types/runtime/lowered.d.ts": "149480080d9891321e29b04e00f93f1eeb051d763f63792ea93594b930b665d5",
     "evaluation/types/runtime/modules.d.ts": "4727d45ace8375fad62aa96c73c65b055604dd191b37d8bbb0bd64988a491bb1",
     "evaluation/types/runtime/node-files.d.ts": "dfc92b2d929903fbfe0c3e2160ed9a76bf302c62bcf707a146d9d0e1f20201e7",
-    "evaluation/types/runtime/node.d.ts": "31c5f6e4d162530bca405e307109d5bfa52ca236317e606eba2ad4d6bf24b614",
+    "evaluation/types/runtime/node.d.ts": "50940f30bacdaf8947f9a67a489ba97434af6e351bbf08a0a082687c5d3ab488",
     "evaluation/types/runtime/plain-object.d.ts": "13b1098c778c8da2cf24ae8ff7d324dec1e990fcee6a60302d8b5d22e174a233",
     "evaluation/types/runtime/platform.d.ts": "f38205568f5239a43dcdb60d5cefe2736241c33e9e41fcba56f18d03ef2bc557",
     "evaluation/types/runtime/pluggable.d.ts": "23b928272c8d48b916b6b008ef6f19010c71c6e71575cdd36b05409433e30c5d",
     "evaluation/types/runtime/promotion.d.ts": "2e5948cd1f5a9439d288bd0051cfd0809728092d980ae3059ca554f564c5a565",
     "evaluation/types/runtime/runtime.d.ts": "44f93626e5535797174052bff851620bcc736c962a21b81d8420cfa7c780c484",
     "evaluation/types/runtime/selected-events.d.ts": "62c88b98e222a8d800d081733246216541b97e787ef467accbbdd47799952780",
+    "evaluation/types/runtime/source-type-context.d.ts": "16c4d78101c81a949726794a0c1bf81ef7087d8a07f0b50f60ec4e8d12219d91",
     "evaluation/types/runtime/surface.d.ts": "f5822e93275d8344dc9f6f80232845dc0c81889895af8390746307662b439094",
     "evaluation/types/runtime/target-arguments.d.ts": "d64d5e48fe21ca7d4b6c6a5af8a9fea99aa7431872fd2b679755faad21b84a77",
-    "evaluation/types/runtime/virtual-project.d.ts": "5805802b7d0c2af2d13732947089193373396012220be046e4d9bbdf28eea954"
+    "evaluation/types/runtime/virtual-project.d.ts": "69f7b0649474a92cf8f3c1bf424ffe500ae6213852e31f15be8f8924fa95b394"
   }
 }

@@ -1,0 +1,7 @@
+# Owner-local load from validated linked-type metadata
+
+The canonical frontend product retains only type-alias string maps. ProgramLoader validates exact source and compiler options before handing those maps to the raw NL/folder loader. Callable records, lexical context/SKILL knowledge, service capabilities, values and module instances remain freshly owned. Changed sources/types/mounts invalidate the product; mismatch is rejected. NATLANG_SOURCE_TYPE_REUSE=0 preserves the raw reference loader.
+
+Exact Core source: 53109e1d2b766f867d08a59217b8141ddec33192. All five SDK targets staged and reproduced from this clean source (292 files). Public ProgramLoader controls share one JSON frontend product across A/B owners, demonstrate independent native services and counters, change Shared from string to number and the implementation, observe fresh numeric description/result, and keep already-loaded A/B state intact. A same-source product from a different lexical program ID is rejected. These two controls plus 13 existing workspace/HOF/native/realm controls and seven System serving controls passed. No model calls.
+
+This fixes duplicate frontend type linking at owner load. The live Source53 frontend cache already correctly coalesced four requests into one 86.8-second compilation. Remaining startup time and failed-loader/Vitest teardown remain open; no full latency attribution or improvement size is claimed.

@@ -1,4 +1,5 @@
 import { type RefinedSlot } from './refined-slots.js';
+import { type SourceTypeExports } from '../runtime/source-type-context.js';
 import { RewriteGate, type RewriteRecord } from './rewrites.js';
 import type { ProgramDescriptor } from '../adaptation/types.js';
 import { spanOf, type NatlangDiagnostic } from './inline.js';
@@ -19,6 +20,8 @@ export interface ProjectFiles {
 }
 export { NEUTRAL_RUNTIME_SPECIFIER };
 export type BuildOptions = {
+    /** Diagnostic opt-out of reusable pure linked-type metadata. */
+    reuseSourceTypes?: boolean;
     /** Opt out of shared generated record modules (diagnostic/reference mode). */
     inlineRecords?: boolean;
     /** Enforce the finite generated-program profile on every editable application module. */
@@ -105,6 +108,7 @@ export type BuildResult = {
     ok: boolean;
     diagnostics: NatlangDiagnostic[];
     outputs: Record<string, string>;
+    linkedTypes?: SourceTypeExports;
     declarations: Record<string, string>;
     manifest: DefinitionManifest;
     outDir: string;

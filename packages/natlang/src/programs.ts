@@ -4,6 +4,7 @@ import * as core from "../vendor/workerd/natlang-workerd.js";
 import {
   compileVirtualProject,
   instantiateVirtualProjectProduct,
+  sourceTypeContextMatches,
   type VirtualProjectProduct,
   formatDiagnostics,
   loadVirtualCallables,
@@ -235,6 +236,8 @@ export function compileProgram(options: {
       (options.product.project.root??"/project")!==PROJECT_ROOT ||
       programKey(options.product.project.files,services)!==programKey(files,services)))
     throw new NatlangProgramError("Native compiler returned a product for different source files",label,"does-not-compile");
+  if(options.product?.sourceTypes && !sourceTypeContextMatches(options.product.sourceTypes,files,PROJECT_ROOT,input.options))
+    throw new NatlangProgramError("Native compiler returned linked types for different compiler inputs",label,"does-not-compile");
   const compiled = options.product
     ? instantiateVirtualProjectProduct(options.product,core as unknown as Record<string,unknown>,{platform})
     : compileVirtualProject(input.project,core as unknown as Record<string,unknown>,{...input.options,platform});
@@ -254,8 +257,8 @@ export function compileProgram(options: {
     );
   }
   let value: unknown;
-  if (!entry) value = loadVirtualCallables(files, "", PROJECT_ROOT, platform);
-  else if (entry.endsWith(".nl")) value = loadVirtualNatlang(files, entry, PROJECT_ROOT, platform);
+  if (!entry) value = loadVirtualCallables(files, "", PROJECT_ROOT, platform, compiled.sourceTypes);
+  else if (entry.endsWith(".nl")) value = loadVirtualNatlang(files, entry, PROJECT_ROOT, platform, compiled.sourceTypes);
   else value = compiled.require(entry);
   const declarations = Object.fromEntries(
     Object.entries(compiled.declarations).map(([path, text]) => [

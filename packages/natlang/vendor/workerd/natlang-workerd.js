@@ -76125,13 +76125,13 @@ ${lanes.join("\n")}
             if (!headMessage2 && maybeSuppress) {
               const savedErrorState = captureErrorCalculationState();
               reportRelationError(headMessage2, source22, target2);
-              let canonical4;
+              let canonical5;
               if (errorInfo && errorInfo !== savedErrorState.errorInfo) {
-                canonical4 = { code: errorInfo.code, messageText: errorInfo.messageText };
+                canonical5 = { code: errorInfo.code, messageText: errorInfo.messageText };
               }
               resetErrorInfo(savedErrorState);
-              if (canonical4 && errorInfo) {
-                errorInfo.canonicalHead = canonical4;
+              if (canonical5 && errorInfo) {
+                errorInfo.canonicalHead = canonical5;
               }
               lastSkippedInfo = [source22, target2];
               return;
@@ -216069,6 +216069,10 @@ function sourceLoadMemo(files2, key, run) {
   memo.set(key, value);
   return value;
 }
+function sourceTypeExports(files2) {
+  const memo = sessions.get(files2);
+  return Object.fromEntries([...memo ?? []].filter(([key]) => key.startsWith("types:")).map(([key, value]) => [key.slice("types:".length), { ...value }]));
+}
 var sessions, enabled2;
 var init_source_session = __esm({
   "src/runtime/source-session.ts"() {
@@ -218477,10 +218481,10 @@ function validateNativeDerivativeTarget(metadata, tensors) {
   if (!value || keys(value) !== "kind,names,schema,stage,value_id,variable" || value.schema !== "natlang.native-derivative-target/1" || !["inner", "outer"].includes(value.stage) || typeof value.variable !== "string" || !value.variable || value.kind !== kind || typeof provenance.derivative_program_id !== "string" || !TENSOR.test(provenance.derivative_program_id) || value.stage === "outer" && (typeof provenance.derivative_execution_id !== "string" || !TENSOR.test(provenance.derivative_execution_id)) || value.value_id !== (kind === "model-parameters" ? provenance.parameter_value_id : metadata.source_artifact_id) || typeof value.value_id !== "string" || !(kind === "native-state" ? STATE : TENSOR).test(value.value_id) || JSON.stringify(value.names) !== JSON.stringify(Object.keys(tensors).sort())) throw new RangeError("native derivative gradient needs its exact differentiation origin");
   return true;
 }
-function validateNativeFunctionalActor(metadata, canonical4) {
+function validateNativeFunctionalActor(metadata, canonical5) {
   const provenance = metadata.provenance, actor = provenance.functional_actor;
   if (actor === void 0) return;
-  if (!actor || keys(actor) !== "arithmetic,base_native_identity,invocation_adapters,parameter_values,schema,uniform_adapters" || actor.schema !== "natlang.native-functional-actor/1" || canonical4(actor.base_native_identity) !== canonical4(metadata.native_identity) || hexDigest(canonical4(actor)) !== provenance.functional_actor_sha256 || !Array.isArray(actor.parameter_values))
+  if (!actor || keys(actor) !== "arithmetic,base_native_identity,invocation_adapters,parameter_values,schema,uniform_adapters" || actor.schema !== "natlang.native-functional-actor/1" || canonical5(actor.base_native_identity) !== canonical5(metadata.native_identity) || hexDigest(canonical5(actor)) !== provenance.functional_actor_sha256 || !Array.isArray(actor.parameter_values))
     throw new RangeError("native functional actor needs exact base, overlays and arithmetic identity");
   const names = /* @__PURE__ */ new Set(), ids = [];
   for (const entry of actor.parameter_values) {
@@ -218502,7 +218506,7 @@ function validateNativeFunctionalActor(metadata, canonical4) {
     expert_dispatch: "source-top-k/differentiable-selected-weights",
     query_chunk_tokens: chunk
   };
-  if (!Number.isSafeInteger(chunk) || chunk < 1 || canonical4(arith) !== canonical4(expected)) throw new RangeError("native functional actor requires complete reference arithmetic");
+  if (!Number.isSafeInteger(chunk) || chunk < 1 || canonical5(arith) !== canonical5(expected)) throw new RangeError("native functional actor requires complete reference arithmetic");
   if (!Array.isArray(actor.uniform_adapters) || actor.invocation_adapters !== null && (!actor.invocation_adapters || typeof actor.invocation_adapters !== "object" || Array.isArray(actor.invocation_adapters) || !Object.keys(actor.invocation_adapters).length || actor.uniform_adapters.length))
     throw new RangeError("native functional actor needs uniform or per-invocation coefficients");
   for (const entries of [actor.uniform_adapters, ...Object.values(actor.invocation_adapters ?? {})]) {
@@ -218516,7 +218520,7 @@ function validateNativeFunctionalActor(metadata, canonical4) {
     const binding = provenance.adapter_binding;
     const receipt = provenance.invocation_actors;
     const actual = receipt ? Object.fromEntries(Object.entries(receipt.invocations).map(([name, value]) => [name, value.adapter_binding?.adapters ?? []])) : null;
-    if (canonical4(actor.uniform_adapters) !== canonical4(binding?.adapters ?? []) || canonical4(actor.invocation_adapters) !== canonical4(actual))
+    if (canonical5(actor.uniform_adapters) !== canonical5(binding?.adapters ?? []) || canonical5(actor.invocation_adapters) !== canonical5(actual))
       throw new RangeError("native functional actor differs from actual evaluated coefficient actors");
   }
   return actor;
@@ -219897,9 +219901,34 @@ var init_representation = __esm({
   }
 });
 
+// src/runtime/source-type-context.ts
+function sourceTypeReuseEnabled() {
+  return globalThis.process?.env?.NATLANG_SOURCE_TYPE_REUSE !== "0";
+}
+function sourceTypeContext(files2, root2, compilerOptions, modules2) {
+  const options = structuredClone(frontendOptions(compilerOptions)), aliases = structuredClone(modules2);
+  return { schema: "natlang.source-types/1", root: root2, sourceDigest: digest2(files2), compilerOptions: options, compilerDigest: digest2(options), modules: aliases, modulesDigest: digest2(aliases) };
+}
+function sourceTypeContextMatches(context, files2, root2, compilerOptions = context?.compilerOptions ?? {}) {
+  return !!context && context.schema === "natlang.source-types/1" && context.root === root2 && context.sourceDigest === digest2(files2) && context.compilerDigest === digest2(frontendOptions(compilerOptions)) && context.compilerDigest === digest2(context.compilerOptions) && !!context.modules && Object.values(context.modules).every((aliases) => !!aliases && typeof aliases === "object" && !Array.isArray(aliases) && Object.values(aliases).every((value) => typeof value === "string")) && context.modulesDigest === digest2(context.modules);
+}
+var canonical2, digest2, optionNames, frontendOptions;
+var init_source_type_context = __esm({
+  "src/runtime/source-type-context.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_hash();
+    canonical2 = (value) => Array.isArray(value) ? value.map(canonical2) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).filter(([, v10]) => v10 !== void 0).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k10, v10]) => [k10, canonical2(v10)])) : value;
+    digest2 = (value) => hexDigest(JSON.stringify(canonical2(value)));
+    optionNames = ["target", "inlineRecords", "constrained", "programId", "guidance", "importedGuidancePrograms", "services", "runtimeSpecifiers", "emit", "declarations", "adaptation", "reuseSourceTypes"];
+    frontendOptions = (value) => Object.fromEntries(optionNames.filter((key) => value[key] !== void 0).map((key) => [key, value[key]]));
+  }
+});
+
 // src/runtime/linked-types.ts
 function readTypesFile(path2, files2) {
-  return { ...sourceLoadMemo(files2, "types:" + path2, () => readTypesFileInSession(path2, files2)) };
+  const prior = files2.sourceGraphReuse !== false && sourceTypeReuseEnabled() ? files2.linkedTypes?.[path2] : void 0;
+  return { ...prior ?? sourceLoadMemo(files2, "types:" + path2, () => readTypesFileInSession(path2, files2)) };
 }
 function readTypesFileInSession(path2, files2) {
   const modules2 = /* @__PURE__ */ new Map();
@@ -220009,6 +220038,7 @@ var init_linked_types = __esm({
     init_define_NATLANG_TS_LIBS();
     import_typescript10 = __toESM(require_typescript(), 1);
     init_source_session();
+    init_source_type_context();
     init_hash();
     init_type_aliases();
   }
@@ -223836,13 +223866,13 @@ function assume(value, predicate) {
   const frame = resolveFrame();
   const shown = canonicalValue(value);
   const valuePreview = shown.length > 400 ? `${shown.slice(0, 400)} \u2026 (${shown.length} chars)` : shown;
-  const digest2 = hexDigest(shown);
+  const digest3 = hexDigest(shown);
   for (const text3 of predicates)
     emitRefinement(frame, "refinement_assumed", {
       call_id: frame.parentCallId ?? null,
       predicate: text3,
       value: valuePreview,
-      value_sha256: digest2
+      value_sha256: digest3
     });
   return value;
 }
@@ -224842,10 +224872,10 @@ function valueType(value) {
   }
   return "Record";
 }
-function canonical2(value) {
-  if (Array.isArray(value)) return value.map(canonical2);
+function canonical3(value) {
+  if (Array.isArray(value)) return value.map(canonical3);
   if (value && typeof value === "object")
-    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, item]) => [key, canonical2(item)]));
+    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, item]) => [key, canonical3(item)]));
   return value;
 }
 function changes(before, after, path2 = []) {
@@ -224873,7 +224903,7 @@ var init_trace = __esm({
     init_define_NATLANG_TS_LIBS();
     init_hash();
     TRACE_VERSION = "reduction-trace/1";
-    sameValue = (a, b) => JSON.stringify(canonical2(a)) === JSON.stringify(canonical2(b));
+    sameValue = (a, b) => JSON.stringify(canonical3(a)) === JSON.stringify(canonical3(b));
     NativeTraceRecorder = class _NativeTraceRecorder {
       events = [];
       started = performance.now();
@@ -230270,7 +230300,7 @@ function validateTeacherTextReadBinding(value, block) {
   return block;
 }
 function mergeTeacherTextTypeAliases(readScope = {}, writerScope = {}) {
-  const canonical4 = (name, source2) => {
+  const canonical5 = (name, source2) => {
     try {
       return formatType(parseType(source2));
     } catch {
@@ -230278,7 +230308,7 @@ function mergeTeacherTextTypeAliases(readScope = {}, writerScope = {}) {
     }
   };
   for (const [name, source2] of Object.entries(writerScope)) {
-    if (Object.hasOwn(readScope, name) && canonical4(name, readScope[name]) !== canonical4(name, source2))
+    if (Object.hasOwn(readScope, name) && canonical5(name, readScope[name]) !== canonical5(name, source2))
       throw new Error(`teacher-text read has conflicting type alias ${name}`);
   }
   return { ...readScope, ...writerScope };
@@ -238267,7 +238297,7 @@ function engageFusion(frame, definition, inputs, invoke) {
         try {
           const read = options.readback ?? (await Promise.resolve().then(() => (init_combinators(), combinators_exports))).readNeuraleseForCurrentTask;
           decoded = await read(fused);
-          agree = (options.agree ?? ((a, b) => canonical3(a) === canonical3(b)))(textValue, decoded);
+          agree = (options.agree ?? ((a, b) => canonical4(a) === canonical4(b)))(textValue, decoded);
         } catch (caught) {
           error = `readback failed: ${caught instanceof Error ? caught.message : String(caught)}`;
         }
@@ -238288,7 +238318,7 @@ function engageFusion(frame, definition, inputs, invoke) {
     frame.task.track(call, frame.parentCallId);
   } };
 }
-var FUSION_CERTIFICATE_SCHEMA, sameSource, sameSite, canonical3, STATES, HOST_EVENTS, UNCONSUMED;
+var FUSION_CERTIFICATE_SCHEMA, sameSource, sameSite, canonical4, STATES, HOST_EVENTS, UNCONSUMED;
 var init_fusion = __esm({
   "src/runtime/fusion.ts"() {
     "use strict";
@@ -238304,7 +238334,7 @@ var init_fusion = __esm({
       const at = a.lastIndexOf("@"), other = b.lastIndexOf("@");
       return at > 0 && other > 0 && a.slice(at) === b.slice(other) && sameSource(a.slice(0, at), b.slice(0, other));
     };
-    canonical3 = (value) => JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);
+    canonical4 = (value) => JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);
     STATES = /* @__PURE__ */ new WeakMap();
     HOST_EVENTS = /* @__PURE__ */ new WeakMap();
     UNCONSUMED = /* @__PURE__ */ new WeakMap();
@@ -241786,17 +241816,17 @@ __export(iterate_exports, {
 });
 function stableHash(value) {
   const seen = /* @__PURE__ */ new WeakSet();
-  const canonical4 = (item) => {
+  const canonical5 = (item) => {
     if (item === null || typeof item !== "object") return typeof item === "function" ? `live:${liveId(item)}` : item;
     if (isNeuraleseRef(item)) return `neuralese:${item.$neuralese.id}`;
     if (item instanceof FolderSnapshot) return `source:${item.digest}`;
     if (isLive(item)) return `live:${liveId(item)}`;
     if (seen.has(item)) return "[cycle]";
     seen.add(item);
-    if (Array.isArray(item)) return item.map(canonical4);
-    return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k10, v10]) => [k10, canonical4(v10)]));
+    if (Array.isArray(item)) return item.map(canonical5);
+    return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k10, v10]) => [k10, canonical5(v10)]));
   };
-  return hexDigest(JSON.stringify(canonical4(value)) ?? "undefined").slice(0, 16);
+  return hexDigest(JSON.stringify(canonical5(value)) ?? "undefined").slice(0, 16);
 }
 function reviewDue(stats, steps, activeMs, lastReviewAt) {
   if (steps < 3) return false;
@@ -261969,10 +261999,10 @@ var SelectedEventQueue = class _SelectedEventQueue {
   /** A pausable source awaits admission. Concurrent producers remain bounded. */
   async push(id3, value) {
     if (typeof id3 !== "string" || !id3) throw new TypeError("Event delivery requires a stable identity");
-    const text3 = canonical(eventData(value)), digest2 = fingerprint(text3, "natlang.event/1");
+    const text3 = canonical(eventData(value)), digest3 = fingerprint(text3, "natlang.event/1");
     const known = this.seen.get(id3);
     if (known) {
-      if (known.digest !== digest2) throw new Error("Event identity was reused with another payload");
+      if (known.digest !== digest3) throw new Error("Event identity was reused with another payload");
       const receipt2 = { source: this.source, id: id3, position: known.position, disposition: "duplicate" };
       this.emit(receipt2);
       return receipt2;
@@ -261993,10 +262023,10 @@ var SelectedEventQueue = class _SelectedEventQueue {
   /** A source that cannot pause gets an explicit overflow disposition. */
   post(id3, value) {
     if (typeof id3 !== "string" || !id3) throw new TypeError("Event delivery requires a stable identity");
-    const text3 = canonical(eventData(value)), digest2 = fingerprint(text3, "natlang.event/1");
+    const text3 = canonical(eventData(value)), digest3 = fingerprint(text3, "natlang.event/1");
     const known = this.seen.get(id3);
     if (known) {
-      if (known.digest !== digest2) throw new Error("Event identity was reused with another payload");
+      if (known.digest !== digest3) throw new Error("Event identity was reused with another payload");
       const receipt2 = { source: this.source, id: id3, position: known.position, disposition: "duplicate" };
       this.emit(receipt2);
       return receipt2;
@@ -262011,7 +262041,7 @@ var SelectedEventQueue = class _SelectedEventQueue {
       throw new RangeError("Event queue overflow; pause the producer or increase its declared capacity");
     }
     const event = Object.freeze({ source: this.source, id: id3, position: this.position++, value: JSON.parse(text3) });
-    this.seen.set(id3, { position: event.position, digest: digest2 });
+    this.seen.set(id3, { position: event.position, digest: digest3 });
     const receipt = { source: this.source, id: id3, position: event.position, disposition: "buffered" };
     const waiting = this.waiting;
     this.waiting = void 0;
@@ -262737,6 +262767,7 @@ function refinedSlotsOf(source2, name, args, returns, types3) {
 // src/compiler/project.ts
 var import_typescript28 = __toESM(require_typescript(), 1);
 init_source_session();
+init_source_type_context();
 
 // src/compiler/rewrites.ts
 init_define_NATLANG_TS_LIBS();
@@ -263472,7 +263503,10 @@ function findTsconfig(files2, project) {
 }
 function compileProject(options) {
   const files2 = sourceFiles(options.files, findTsconfig(options.files, options.project).root);
-  return withSourceLoadSession(files2, () => compileProjectInSession(options, files2));
+  return withSourceLoadSession(files2, () => {
+    const result = compileProjectInSession(options, files2);
+    return options.reuseSourceTypes !== false && sourceTypeReuseEnabled() ? { ...result, linkedTypes: sourceTypeExports(files2) } : result;
+  });
 }
 function compileProjectInSession(options, files2) {
   const fs2 = options.files;
@@ -264140,6 +264174,7 @@ ${item.detail.split("\n").map((line) => `  ${line}`).join("\n")}` : "") + (item.
 
 // src/runtime/virtual-project.ts
 init_define_NATLANG_TS_LIBS();
+init_source_type_context();
 init_native_entry();
 init_runtime_specifier();
 init_loader();
@@ -264195,8 +264230,10 @@ function virtualProjectFiles(files2, root2 = "/project") {
     }
   };
 }
-function virtualSourceFiles(files2, root2 = "/project") {
-  const virtual = virtualProjectFiles(files2, root2);
+function virtualSourceFiles(files2, root2 = "/project", sourceTypes) {
+  const snapshot3 = Object.fromEntries(Object.entries(files2));
+  const virtual = virtualProjectFiles(snapshot3, root2);
+  const linkedTypes = sourceTypeReuseEnabled() && sourceTypeContextMatches(sourceTypes, snapshot3, root2) ? structuredClone(sourceTypes.modules) : void 0;
   return {
     join: joinSourcePath,
     dirname: (path2) => path2.slice(0, path2.lastIndexOf("/")) || "/",
@@ -264214,22 +264251,23 @@ function virtualSourceFiles(files2, root2 = "/project") {
     read: (path2) => virtual.read(path2),
     list: (path2) => virtual.list(path2),
     relative: (path2) => path2.startsWith(`${root2}/`) ? path2.slice(root2.length + 1) : path2,
-    root: root2
+    root: root2,
+    ...linkedTypes ? { linkedTypes } : {}
   };
 }
-function loadVirtualNatlang(files2, path2, root2 = "/project", platform) {
-  const record3 = loadNamedFunction(path2.startsWith("/") ? path2 : `${root2}/${path2}`, virtualSourceFiles(files2, root2));
+function loadVirtualNatlang(files2, path2, root2 = "/project", platform, sourceTypes) {
+  const record3 = loadNamedFunction(path2.startsWith("/") ? path2 : `${root2}/${path2}`, virtualSourceFiles(files2, root2, sourceTypes));
   return namedCallable(record3.name, record3, void 0, platform);
 }
-function loadVirtualCallables(files2, dir = "", root2 = "/project", platform) {
-  return callableTree(loadCallableFolder(dir ? `${root2}/${dir}` : root2, virtualSourceFiles(files2, root2)), void 0, platform);
+function loadVirtualCallables(files2, dir = "", root2 = "/project", platform, sourceTypes) {
+  return callableTree(loadCallableFolder(dir ? `${root2}/${dir}` : root2, virtualSourceFiles(files2, root2, sourceTypes)), void 0, platform);
 }
 function compileVirtualProjectProduct(project, options) {
   const snapshot3 = structuredClone(project);
   const root2 = snapshot3.root ?? "/project";
   const files2 = virtualProjectFiles(snapshot3.files, root2);
   const specifiers = [...options.runtimeSpecifiers ?? ["@natlang/browser", "@natlang/node"]];
-  const build = compileProject({
+  const compiled2 = compileProject({
     project: root2,
     constrained: options.constrained,
     programId: options.programId,
@@ -264240,6 +264278,7 @@ function compileVirtualProjectProduct(project, options) {
     importedGuidancePrograms: options.importedGuidancePrograms,
     services: options.services,
     inlineRecords: options.inlineRecords,
+    reuseSourceTypes: options.reuseSourceTypes,
     target: options.target,
     runtimeSpecifier: specifiers[0],
     write: true,
@@ -264248,12 +264287,19 @@ function compileVirtualProjectProduct(project, options) {
     adaptation: options.adaptation,
     surfaceSpecifiers: specifiers
   });
-  return { schema: "natlang.virtual-project-product/1", project: snapshot3, runtimeSpecifiers: specifiers, build };
+  const { linkedTypes, ...build } = compiled2;
+  return {
+    schema: "natlang.virtual-project-product/1",
+    project: snapshot3,
+    runtimeSpecifiers: specifiers,
+    build,
+    ...compiled2.ok && options.reuseSourceTypes !== false && sourceTypeReuseEnabled() && linkedTypes ? { sourceTypes: sourceTypeContext(snapshot3.files, root2, options, linkedTypes) } : {}
+  };
 }
 function instantiateVirtualProjectProduct(product, runtime, options) {
   if (product.schema !== "natlang.virtual-project-product/1") throw new Error("unsupported virtual project product");
-  const { project, build: result, runtimeSpecifiers: specifiers } = structuredClone(product);
-  return { ...result, require: createVirtualProjectRequire(project, result.outputs, specifiers, runtime, options) };
+  const { project, build: result, runtimeSpecifiers: specifiers, sourceTypes } = structuredClone(product);
+  return { ...result, ...sourceTypes ? { sourceTypes } : {}, require: createVirtualProjectRequire(project, result.outputs, specifiers, runtime, options) };
 }
 function createVirtualProjectRequire(project, outputs, specifiers, runtime, options) {
   const { platform } = options;
@@ -264775,6 +264821,7 @@ function rewriteTypeModuleSpecifiers(source2, resolve2, fileName = "types.ts") {
 
 // src/core/index.ts
 init_loader();
+init_source_type_context();
 
 // src/native/folder-shell.ts
 init_define_NATLANG_TS_LIBS();
@@ -305948,6 +305995,7 @@ export {
   saveNz,
   softFunction,
   softFunctionOf,
+  sourceTypeContextMatches,
   toPiContext,
   untrusted,
   virtualProjectFiles,

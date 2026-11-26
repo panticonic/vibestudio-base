@@ -31,3 +31,5 @@ export type { ExpandedType } from '../native/expand-type.js';
 export { ONCE_EFFECTS } from '../native/effects.js';
 export { rewriteTypeModuleSpecifiers } from '../compiler/type-module-links.js';
 export { packageExportTarget } from '../runtime/loader.js';
+export { sourceTypeContextMatches } from '../runtime/source-type-context.js';
+export type { SourceTypeContext } from '../runtime/source-type-context.js';

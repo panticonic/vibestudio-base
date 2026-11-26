@@ -1,3 +1,4 @@
+import type { SourceTypeExports } from './source-type-context.js';
 import { type EnsuresClause } from './ensures.js';
 import { type GenericResult } from '../native/representation.js';
 export { readTypesFile } from './linked-types.js';
@@ -12,6 +13,8 @@ export type SourceFiles = {
     list(path: string): string[];
     /** Opt out of per-load graph sharing; source revisions are never shared across loads. */
     sourceGraphReuse?: boolean;
+    /** Exact immutable frontend aliases; records and live bindings are always fresh. */
+    linkedTypes?: SourceTypeExports;
     /** Display path relative to the loaded root. */
     relative?(path: string): string;
     /** The loaded root (the directory `relative` counts from): where package-root `uses:` paths resolve when no manifest is above. */

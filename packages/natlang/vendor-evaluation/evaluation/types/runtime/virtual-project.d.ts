@@ -1,3 +1,4 @@
+import { type SourceTypeContext } from './source-type-context.js';
 /**
  * Compile and execute a project held in memory (browser playground, Studio workers, tests).
  * The project compiles to CommonJS and runs through a small module loader in this realm, so it
@@ -17,13 +18,14 @@ export declare function virtualProjectFiles(files: Record<string, string>, root?
     outputs: Map<string, string>;
 };
 /** Loader access to in-memory files; display paths are relative to `root`. */
-export declare function virtualSourceFiles(files: Record<string, string>, root?: string): SourceFiles;
+export declare function virtualSourceFiles(files: Record<string, string>, root?: string, sourceTypes?: SourceTypeContext): SourceFiles;
 /** Load a named `.nl` function, with its companion folder, from in-memory files; its TypeScript modules run on `platform`. */
-export declare function loadVirtualNatlang(files: Record<string, string>, path: string, root?: string, platform?: Platform): NatlangCallable;
+export declare function loadVirtualNatlang(files: Record<string, string>, path: string, root?: string, platform?: Platform, sourceTypes?: SourceTypeContext): NatlangCallable;
 /** Load an in-memory directory as a callable folder: its `.nl` and `.ts` items as a record of callables. */
-export declare function loadVirtualCallables(files: Record<string, string>, dir?: string, root?: string, platform?: Platform): Record<string, unknown>;
+export declare function loadVirtualCallables(files: Record<string, string>, dir?: string, root?: string, platform?: Platform, sourceTypes?: SourceTypeContext): Record<string, unknown>;
 export type CompiledProject = BuildResult & {
     require(path: string): Record<string, unknown>;
+    sourceTypes?: SourceTypeContext;
 };
 export type VirtualProjectOptions = {
     inlineRecords?: boolean;
@@ -42,6 +44,7 @@ export type VirtualProjectOptions = {
     declarations?: boolean;
     /** Collect the program descriptor for adaptation. Defaults to true. */
     adaptation?: boolean;
+    reuseSourceTypes?: boolean;
 };
 /**
  * Compile a virtual project and return a loader for its modules. `runtime` is the namespace that
@@ -59,6 +62,7 @@ export type VirtualProjectProduct = {
     project: VirtualProject;
     runtimeSpecifiers: string[];
     build: BuildResult;
+    sourceTypes?: SourceTypeContext;
 };
 export type VirtualProjectProductOptions = Omit<VirtualProjectOptions, 'platform' | 'modules' | 'target'> & {
     /** Explicit: a compiler worker has no runtime platform from which to infer this. */
