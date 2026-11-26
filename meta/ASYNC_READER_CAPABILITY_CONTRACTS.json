@@ -1,0 +1,45 @@
+{
+  "inventoryBeforeEdits": true,
+  "consumers": [
+    {
+      "path": "skills/open-user-goal/workOnProviderHandoffGoal/observeProviderHistory.nl",
+      "parameters": 1,
+      "actualCallback": "async TS native I/O returns Promise<ConversationRead | null>"
+    },
+    {
+      "path": "skills/open-user-goal/reconcilePanelLaunchState/observeLaunchScope.nl",
+      "parameters": 1,
+      "actualCallback": "async TS native I/O returns Promise<LaunchSnapshot | null>"
+    },
+    {
+      "path": "skills/open-user-goal/reconcilePanelLaunchState/verifyLaunchScope.nl",
+      "parameters": 2,
+      "actualCallback": "async TS native I/O returns Promise<LaunchSnapshot | null>"
+    }
+  ],
+  "parameterCount": 4,
+  "alreadyTruthful": "reviewRetainedMemory.MemoryReaders explicitly returns Promise and passed actual captured-reader controls",
+  "mechanism": "Actual asynchronous reader capabilities must advertise Promise return values to callers; unawaited Promise is not a native observation",
+  "unchanged": [
+    "owner lifetime",
+    "lexical grants",
+    "causal recording",
+    "native service implementation",
+    "user goals/IDs/splits",
+    "root public goal signatures"
+  ],
+  "separateOpenFinding": "The archived later root .toString/default error is not localized by this annotation correction.",
+  "verification": {
+    "unit": "vibe-async-reader-capability-20261126a.service",
+    "actualPublicCompilerGatewayControlsPassed": 3,
+    "skipped": 10,
+    "durationSeconds": 126.48,
+    "peakGiB": 2.7,
+    "cases": [
+      "Launch read-only callback observation and actual causal receipts",
+      "Launch private-note callback observation/readback and requested native write",
+      "Provider stable async observation/readback and requested local handoff"
+    ],
+    "remoteInference": 0
+  }
+}
