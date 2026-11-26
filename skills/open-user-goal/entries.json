@@ -540,7 +540,7 @@
     "additionalArguments": {}
   },
   "panel-source-migration": {
-    "program": "skills/open-user-goal/migratePanelSource.ts",
+    "program": "skills/open-user-goal/migratePanelSource.nl",
     "callable": "migratePanelSource",
     "resultType": "PanelSourceMigrationOutcome",
     "skill": "panelSourceMigration",
