@@ -178,7 +178,10 @@
     "workOnEditorialPacket": {
       "mounts": [
         "workOnEditorialPacket/packet",
-        "workOnEditorialPacket/reviewPacketSource/packet"
+        "workOnEditorialPacket/reviewPacketSource/packet",
+        "workOnEditorialPacket/reviewPacketSource/pdf",
+        "workOnEditorialPacket/proposeEditorialRevision/policy",
+        "workOnEditorialPacket/reconcileEditorialRevision/policy"
       ],
       "types": [
         "PacketReport",
@@ -242,6 +245,28 @@
       ],
       "types": [
         "NewsEvidenceResult"
+      ]
+    },
+    "workOnProviderHandoffGoal": {
+      "mounts": [
+        "workOnProviderHandoffGoal/workspace",
+        "workOnProviderHandoffGoal/reviewRetainedApproval/authority",
+        "workOnProviderHandoffGoal/reviewRetainedDelivery/conversation"
+      ],
+      "types": [
+        "ConversationCard",
+        "ConversationRead",
+        "ProviderHistory",
+        "ProviderGoalReport",
+        "ProviderPlan",
+        "OutputReadback",
+        "RetainedApproval",
+        "RetainedDelivery",
+        "ApprovalReviewEvidence",
+        "DeliveryReviewEvidence",
+        "ResultSelection",
+        "ProviderHandoff",
+        "ProviderResult"
       ]
     }
   },
