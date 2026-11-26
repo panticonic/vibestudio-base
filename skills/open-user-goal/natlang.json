@@ -587,6 +587,14 @@
         "PackageDecision",
         "SuiteReviewReport"
       ]
+    },
+    "maintainWorkspaceSkill": {
+      "mounts": [
+        "maintainWorkspaceSkill/investigateSkill/authoring"
+      ],
+      "types": [
+        "SkillMaintenanceFindings"
+      ]
     }
   },
   "targets": {
@@ -646,7 +654,6 @@
     "workOnDemoPortfolio/portfolio": "skills/open-demo-portfolio",
     "workOnRegencyBriefing/realm": "skills/open-regency-briefing",
     "workOnRegencyBriefing/qualifyRegencyClaim/reviewer": "skills/examples-review",
-    "maintainWorkspaceSkill/authoring": "skills/natlang-authoring",
     "workOnImageCandidateGoal/workspace": "skills/open-image-candidate",
     "reviewDesktopReadiness/inspectDesktopEvidence/clientDevelopment": "skills/clientdev/natlang",
     "workOnApiReadinessGoal/workspace": "skills/open-api-readiness",
@@ -724,6 +731,7 @@
     "workOnDemoPortfolio/investigatePortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review",
     "reviewRetainedMemory/investigateRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation",
     "reviewExtensionDossier/investigateDossier/extensiondev": "skills/extensiondev/natlang",
-    "reviewRetainedBuildIncident/assessCheckpoint/performance": "skills/performance/build"
+    "reviewRetainedBuildIncident/assessCheckpoint/performance": "skills/performance/build",
+    "maintainWorkspaceSkill/investigateSkill/authoring": "skills/natlang-authoring"
   }
 }
