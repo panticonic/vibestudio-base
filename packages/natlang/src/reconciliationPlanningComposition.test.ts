@@ -56,3 +56,19 @@ it('returns a reasoned hold with actual prior/current evidence instead of an une
 it('generates the real public reconciliation declaration from the selected compiler',async()=>{
  const target=join(base,'skills/open-local-reconciliation'),files=await readProjectFiles({readFile:p=>readFile(p,'utf8'),readdir:p=>readdir(p,{withFileTypes:true})},target);const compiled=compileProgram({platform:workerdPlatform({realm:confinedRealm(testNewFunction())}),files,entry:'reconcileLocalGoal.nl',label:target,root:target});expect(compiled.declarations['reconcileLocalGoal.d.nl.ts']).toBeTruthy();const out=process.env.VIBESTUDIO_RECONCILIATION_DECLARATIONS;if(out){await mkdir(out,{recursive:true});await writeFile(join(out,'reconcileLocalGoal.d.nl.ts'),compiled.declarations['reconcileLocalGoal.d.nl.ts']!);}
 },240000);
+
+// Shared service-binding regression from the complete eight-template authored-NL inventory.
+it.skipIf(!process.env.VIBE_EXAMPLES_TEMPLATE)('executes the actual authored Adventure callee through its admitted scope for withdrawal and staging',async()=>{
+ const example=process.env.VIBE_EXAMPLES_TEMPLATE!;
+ const source=await readFile(join(example,'skills/open-adventure-journey/reviewAdventureJourney/resolveTurn/changeTurn.nl'),'utf8');
+ const withdraw=source.match(/call ([A-Za-z_$][A-Za-z0-9_.$]*)\.withdraw/u)?.[1],stage=source.match(/call ([A-Za-z_$][A-Za-z0-9_.$]*)\.stage/u)?.[1];
+ expect(withdraw).toBeTruthy();expect(stage).toBeTruthy();
+ const script=`return proposal===null?await ${withdraw}.withdraw(current.save.id,current.observation):await ${stage}.stage(current.save.id,current.observation,proposal);`;
+ for(const proposal of [null,{intent:'inspect',target:'native-place'}]){
+  const current={save:{id:'native-save',title:'Owned saved journey',label:'current'},observation:'native-observation',place:{id:'native-place',name:'Current hall',kind:'place',description:'Actual player room',location:null,open:null,sealed:null,locked:null},tick:0,revision:1,scene:{signature:'native-scene',artwork:'matched'},visible:[],inventory:[],exits:[],pending:proposal===null?{text:'Inspect current hall',id:'native-pending'}:null};
+  const returned={status:proposal===null?'withdrawn':'staged',view:{...current,observation:'native-next',revision:2,pending:proposal===null?null:{text:'inspect native-place',id:'native-new-pending'}}};
+  const calls:unknown[]=[];
+  const result=await invoke('skills/open-adventure-journey/reviewAdventureJourney.nl',{adventurePlayerTurn:{withdraw:async(save:string,observation:string)=>{calls.push({method:'withdraw',save,observation});return returned;},stage:async(save:string,observation:string,value:unknown)=>{calls.push({method:'stage',save,observation,proposal:value});return returned;}}},[script],[current,proposal],'resolveTurn.changeTurn');
+  expect(calls).toEqual([proposal===null?{method:'withdraw',save:current.save.id,observation:current.observation}:{method:'stage',save:current.save.id,observation:current.observation,proposal}]);expect(result.value).toEqual(returned);
+ }
+},240000);
