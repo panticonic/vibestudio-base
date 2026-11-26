@@ -301,7 +301,7 @@ export type PhoneProviderEvidence = {
 };
 export type PhoneFirstRunEvidence = {
   card: PhoneFirstRunCard; assignment: PhoneFirstRunAssignment;
-  startup: PhonePhaseEvidence; build: PhoneProviderEvidence; resume: unknown;
+  startup: PhonePhaseEvidence | null; build: PhoneProviderEvidence | null; resume: unknown;
 };
 export type PhoneFirstRunFinding = string;
 
