@@ -46,7 +46,7 @@ it.each([false,true])('does not equate permission with a requested sharing write
  ],goal);expect(writes).toBe(requested?1:0);expect((result.value as any).handoff).toEqual(requested?receipt:null);expect(result.records.some(r=>r.definition.source.endsWith('reviewWorkspaceShare.nl'))).toBe(true);
 },240000);
 it('preserves a diagnostic boundary and does not invent a runtime profile or write',async()=>{
- let writes=0;const result=await invoke('skills/open-user-goal/reviewRetainedBuildIncident.nl',{buildIncidentCatalog:{discover:async()=>({subject:{title:'Runtime question',source:'workers/owned',owner:'current-owner',revision:'current-revision'},checkpoints:[],budgetBytes:null,localHandoffAllowed:true})},buildIncidentHandoff:{stage:async()=>{writes++;throw Error('No handoff requested');}}},[
+ let writes=0;const result=await invoke('skills/open-user-goal/reviewRetainedBuildIncident.nl',{buildIncidentCatalog:{discover:async()=>({subject:{title:'Runtime question',source:'workers/owned',owner:'current-owner',revision:'current-revision'},checkpoints:[],budgetBytes:null,localHandoffAllowed:true}),open:async()=>{throw Error('No retained checkpoint exists');}},buildIncidentHandoff:{stage:async()=>{writes++;throw Error('No handoff requested');}}},[
  'const survey=await discoverIncident();const selected=await selectCheckpoints(goal,survey);const disposition=await decideFinding(goal,selected.focus,null,null);return {current:null,baseline:null,disposition,handoff:null};',
  'return {focus:"runtime-memory",current:null,baseline:null};',
  'return {finding:"held",blocker:"wrong-measurement-boundary",reason:"No retained process-tree memory observation exists; a build would not establish runtime memory."};'
