@@ -71,9 +71,9 @@ export default {
     "additionalArguments": {}
   },
   "coordinated-revision": {
-    "program": "skills/open-user-goal/reviseCoordinatedDocuments.ts",
+    "program": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
     "callable": "reviseCoordinatedDocuments",
-    "resultType": "CoordinatedRevisionResult",
+    "resultType": "CoordinatedRevisionFindings",
     "skill": "coordinatedRevision",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"cdacac41f9ef3c7a95a19370f0ef2fceddcfc3dd85645de07003fb49a6f11417"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"77322a7ab9600469fa8845e94d96f0150a0864013482d488d688e39f909b7a67"};

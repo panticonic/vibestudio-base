@@ -215902,8 +215902,8 @@ var init_model_facing = __esm({
   "src/runtime/model-facing.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    MODEL_FACING_VARIANTS = ["effect-receipt", "learned-compaction", "compact-callable-scope"];
-    ADOPTED = ["effect-receipt", "compact-callable-scope"];
+    MODEL_FACING_VARIANTS = ["effect-receipt", "learned-compaction", "compact-callable-scope", "computed-value-completion"];
+    ADOPTED = ["effect-receipt", "compact-callable-scope", "learned-compaction", "computed-value-completion"];
     active = enabled();
     modelFacing = (name) => active.has(name);
     PROMPT_REVISIONS = ["current", "2026-11-22"];
@@ -215964,7 +215964,7 @@ function promptAtNlDepthLimit(prompt) {
   if (!prompt.includes(TOOLS_PROMPT2)) return prompt + "\n\n" + NL_DEPTH_LIMIT_NOTICE2;
   return prompt.replace(TOOLS_PROMPT2, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT2).replace(GENERATION_GUIDANCE2, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT2).replace(APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT);
 }
-var PREVIOUS, SEMANTIC_RESULT_PROMPT2, SEMANTIC_CALL_COMPLETION_PROMPT2, TOOLS_PROMPT2, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES2, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION2, DIRECTORY_REDUCER_PROMPT, functionResultNote, NL_DEPTH_LIMIT_NOTICE2, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT2, APPROACH_PROMPT, PROMPT_EXAMPLE_TEXTS2, PROMPT_EXAMPLE_SOURCE, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE2, SYSTEM_PROMPT, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT2, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
+var PREVIOUS, SEMANTIC_RESULT_PROMPT2, SEMANTIC_CALL_COMPLETION_PROMPT2, TOOL_RESULT_PROMPT, TOOLS_PROMPT2, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES2, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION2, DIRECTORY_REDUCER_PROMPT, functionResultNote, NL_DEPTH_LIMIT_NOTICE2, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT2, APPROACH_PROMPT, PROMPT_EXAMPLE_TEXTS2, PROMPT_EXAMPLE_SOURCE, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE2, SYSTEM_PROMPT, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT2, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
 var init_prompt = __esm({
   "src/native/prompt.ts"() {
     "use strict";
@@ -215980,7 +215980,8 @@ At a direct parameter declared Neuralese<string>, an ordinary string argument is
     SEMANTIC_CALL_COMPLETION_PROMPT2 = PREVIOUS ? SEMANTIC_CALL_COMPLETION_PROMPT : `Give a child call a distinct sub-question and the inputs it needs; answer the question you were given here.
 
 `;
-    TOOLS_PROMPT2 = PREVIOUS ? TOOLS_PROMPT : SEMANTIC_RESULT_PROMPT2 + SEMANTIC_CALL_COMPLETION_PROMPT2 + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows each one's type and value. A value too long to show whole is cut off, or a record shown by its field names, marked <<\u2026>>, and the name still holds all of it. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, a function may call itself only on a smaller argument, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const verdicts = await Promise.all(<items>.map(item => nl<boolean>`Decide whether item meets <criterion>.`(item))); const kept = <items>.filter((item, i) => verdicts[i] === true), where <angle brackets> stand for this call's own names and criterion. Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ <criterion> })`Decide whether item meets <criterion>.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. Answer questions about meaning by reading the data, or by mapping an nl function over it when it is large. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, pass the parent's criterion as it stands, with its relevant context; a question can express the same intent as a statement. For a function with a finite result (a boolean or a union of literals), decide(fn, ...args) runs it and returns { value, probabilities, confidence }: use it when how sure the answer is matters to what you do next.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. For an available callable stepFn, stepFn.iterateOn(initialState, ...fixedArgs) supplies stepFn itself, so its first argument is the initial state. This is equivalent to the free form iterateOn(stepFn, initialState, ...fixedArgs). Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval stages that value; send it with return_result and status \"success\" without a value. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code: use the variable that holds the value. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument and have it return the declared child type. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input, function and service names listed in this call. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
+    TOOL_RESULT_PROMPT = !PREVIOUS && modelFacing("computed-value-completion") ? `Complete this function with its actual typed result. Use eval with finish:true to compute and return a value, including a value obtained from an available function or native service. Compose available typed functions when their questions or operations help with this task, passing their actual values between calls. When an existing value or exact computation supplies an identifier, digest, receipt, schema or other native data, return or transform that value in code rather than manually reconstructing it in tool JSON. For a direct semantic answer that needs no computation or effects, call return_result with status "success" and the declared value. Both are completion tools; choose the one appropriate to the result. ` + SEMANTIC_RESULT_PROMPT2.slice(SEMANTIC_RESULT_PROMPT2.indexOf("Return only that value")) : SEMANTIC_RESULT_PROMPT2;
+    TOOLS_PROMPT2 = PREVIOUS ? TOOLS_PROMPT : TOOL_RESULT_PROMPT + SEMANTIC_CALL_COMPLETION_PROMPT2 + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows each one's type and value. A value too long to show whole is cut off, or a record shown by its field names, marked <<\u2026>>, and the name still holds all of it. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, a function may call itself only on a smaller argument, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const verdicts = await Promise.all(<items>.map(item => nl<boolean>`Decide whether item meets <criterion>.`(item))); const kept = <items>.filter((item, i) => verdicts[i] === true), where <angle brackets> stand for this call's own names and criterion. Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ <criterion> })`Decide whether item meets <criterion>.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. Answer questions about meaning by reading the data, or by mapping an nl function over it when it is large. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, pass the parent's criterion as it stands, with its relevant context; a question can express the same intent as a statement. For a function with a finite result (a boolean or a union of literals), decide(fn, ...args) runs it and returns { value, probabilities, confidence }: use it when how sure the answer is matters to what you do next.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. For an available callable stepFn, stepFn.iterateOn(initialState, ...fixedArgs) supplies stepFn itself, so its first argument is the initial state. This is equivalent to the free form iterateOn(stepFn, initialState, ...fixedArgs). Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval stages that value; send it with return_result and status \"success\" without a value. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code: use the variable that holds the value. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument and have it return the declared child type. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input, function and service names listed in this call. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
     FUNCTION_TOOLS_PROMPT = "\nIf a function you call is unclear or wrong, read it with read_code. Use edit_code to fix it when that tool is offered.\nSome functions are directory reducers. Call await someFolder.apply(reducer, ...args) to retain their edits and typed result. Call const proposal = await someFolder.propose(reducer, ...args) to try an edit without changing the receiving folder: proposal.folder is an immutable source snapshot, proposal.value its result. Evaluate proposal.folder, then await someFolder.accept(proposal) when justified; stale or foreign proposals fail. Use snapshot() to freeze source, snapshot.branch() for an independent population branch, and await someFolder.select(snapshot) to install the exact selected source from the same target. To improve a program repeatedly, await someFolder.iterateOn(step, initialState, ...fixedArgs).withMeasure(state => state.remaining).until(state => state.done). Here the receiver is a folder, so pass the step explicitly: someFolder.iterateOn(step, initialState, ...fixedArgs). This differs from a callable receiver: step.iterateOn(initialState, ...fixedArgs). The step receives a private folder and current JSON state, and returns the next state. The result is {folder, state}; each step commits source and state together and leaves the original folder unchanged. The nonnegative integer measure must decrease each step; semantic progress reviews remain active and cannot replenish it.\nAn explicit top-level return in eval stages the typed value and, when this reducer was applied to a folder, retains every change.";
     FILE_TOOL_SURFACES = ["all", "editor", "files"];
     FILE_TOOL_LINES2 = {
@@ -218970,8 +218971,8 @@ function validateNativeState(metadata, tensors) {
     throw new RangeError("invalid native-state metadata");
   if (metadata.adapter_binding !== void 0) validateNativeAdapterBinding(metadata.adapter_binding, metadata);
   validateNativeStateDerivation(metadata.derivation);
-  if (metadata.producer_kind !== void 0 && (!["text", "span"].includes(metadata.producer_kind) || metadata.derivation !== void 0))
-    throw new RangeError("native state producer_kind is text or span, and a derived state has none");
+  if (metadata.producer_kind !== void 0 && (!["text", "span", "capture"].includes(metadata.producer_kind) || metadata.derivation !== void 0))
+    throw new RangeError("native state producer_kind is text, span or capture, and a derived state has none");
   const expected = /* @__PURE__ */ new Set(["token_ids", "positions", "embeddings"]);
   const count = (name, rank) => {
     const tensor = tensors[name];
@@ -224171,6 +224172,17 @@ function selectedServicesModule(record3) {
   }
   return Object.fromEntries([...names].map((name) => [name, selectedService(name)]));
 }
+function sharedModuleBindings(bindings2) {
+  let topLevel = true;
+  const inline2 = (...args) => {
+    const value = bindings2.inline(...args);
+    if (!topLevel) return value;
+    return value instanceof Promise ? value.then(sharedModuleValue) : sharedModuleValue(value);
+  };
+  return [{ ...bindings2, inline: inline2 }, () => {
+    topLevel = false;
+  }];
+}
 function moduleInstance(platform, record3, level) {
   const task = currentFrame()?.task;
   const host = moduleHost(platform);
@@ -224232,16 +224244,18 @@ function moduleInstance(platform, record3, level) {
     return platform.packageLoader(specifier, task);
   };
   const module = { exports };
+  const evaluate = () => environment.evaluateModule(code, {
+    exports,
+    module,
+    require: require2,
+    __natlang: lowered_exports,
+    __natlang_context: level,
+    nl,
+    iterateOn: iterateOn2
+  });
   try {
-    environment.evaluateModule(code, {
-      exports,
-      module,
-      require: require2,
-      __natlang: lowered_exports,
-      __natlang_context: level,
-      nl,
-      iterateOn: iterateOn2
-    });
+    if (cache === host.instances) inSharedModuleTopLevel(evaluate);
+    else evaluate();
   } catch (error) {
     cache.delete(record3);
     throw error;
@@ -224440,27 +224454,33 @@ async function moduleInstanceAsync(platform, record3, level) {
         return platform.packageLoader(specifier, task);
       };
       const module = { exports: raw };
-      const runtimeBindings = scope.environment.authority.startsWith("selected-semantic/") ? {
+      const loweredBindings = scope.environment.authority.startsWith("selected-semantic/") ? {
         ...lowered_exports,
         // Context is loader authority, not a guest-synthesized module tree.
         inline: (plan, values, accessors, _context, version) => inlineSelected(plan, values, accessors, siblings, version)
       } : lowered_exports;
-      await scope.environment.evaluateModuleAsync(code, {
-        exports: raw,
-        module,
-        require: require2,
-        __natlang: runtimeBindings,
-        __natlang_context: siblings,
-        nl,
-        iterateOn: iterateOn2,
-        __natlang_module: {
-          id: current.id,
-          source: current.source,
-          revision: current.revision,
-          originalSource: current.text,
-          imports: [...current.imports]
-        }
-      });
+      const [runtimeBindings, endTopLevel] = scope === moduleHost(platform).sharedAsyncScope ? sharedModuleBindings(loweredBindings) : [loweredBindings, () => {
+      }];
+      try {
+        await scope.environment.evaluateModuleAsync(code, {
+          exports: raw,
+          module,
+          require: require2,
+          __natlang: runtimeBindings,
+          __natlang_context: siblings,
+          nl,
+          iterateOn: iterateOn2,
+          __natlang_module: {
+            id: current.id,
+            source: current.source,
+            revision: current.revision,
+            originalSource: current.text,
+            imports: [...current.imports]
+          }
+        });
+      } finally {
+        endTopLevel();
+      }
       scope.check();
       if (module.exports !== raw) Object.defineProperties(raw, Object.getOwnPropertyDescriptors(module.exports));
       if (!Object.hasOwn(raw, "__esModule")) Object.defineProperty(raw, "__esModule", { value: true });
@@ -227281,7 +227301,11 @@ var init_builtin = __esm({
 function callContext(request, response) {
   const sampled = response.raw_response?.x_natlang_rl_capture;
   const tokens2 = (segment) => segment.kind === "tokens" && Array.isArray(segment.token_ids);
-  const base = { messages: request.messages, tools: request.tools ?? [] };
+  const base = {
+    messages: request.messages,
+    tools: request.tools ?? [],
+    ...request.thinking === false ? { chat_template_kwargs: { enable_thinking: false } } : {}
+  };
   const exact = !!sampled?.prompt?.length && !!sampled.generated_inputs?.length && sampled.prompt.every((segment) => tokens2(segment) || segment.kind === "native_state" && typeof segment.id === "string") && sampled.generated_inputs.every((input) => Number.isSafeInteger(input?.token_id));
   if (!exact) return base;
   const plain3 = sampled.prompt.every(tokens2);
@@ -227327,7 +227351,7 @@ function operatorPurpose(body) {
   const text3 = body.replace(/\n+$/, "");
   return text3.length > 2e3 ? text3.slice(0, 2e3) : text3;
 }
-var PRODUCING_CALLS, OPERATOR_FRAMES, OPERATOR_SPAN_CAPS, OPERATOR_REASONING_TOKENS, OPERATOR_COMPACT_CHARS, OPERATOR_MIN_CHARS;
+var PRODUCING_CALLS, OPERATOR_FRAMES, OPERATOR_SPAN_CAPS, OPERATOR_COMPACT_CHARS, OPERATOR_MIN_CHARS;
 var init_operator_frames = __esm({
   "src/native/operator-frames.ts"() {
     "use strict";
@@ -227348,7 +227372,6 @@ var init_operator_frames = __esm({
       "compact-history": 1024,
       "extract": 256
     };
-    OPERATOR_REASONING_TOKENS = 2048;
     OPERATOR_COMPACT_CHARS = 8e3;
     OPERATOR_MIN_CHARS = 800;
   }
@@ -227987,6 +228010,10 @@ function chatCompletionModelTurn(transport, options = {}) {
         wireRequest.x_natlang_adapters = request.adapters;
       }
       if (request.guidance) wireRequest.guidance = request.guidance;
+      if (request.thinking === false && options.adapters)
+        wireRequest.chat_template_kwargs = { ...wireRequest.chat_template_kwargs, enable_thinking: false };
+      if (request.exact_ids && options.adapters && wireRequest.x_natlang_rl_capture === void 0 && typeof wireRequest.temperature === "number" && wireRequest.temperature > 0)
+        wireRequest.x_natlang_rl_capture = true;
       if (request.privileged_context || request.guidance_policy) {
         if (!options.adapters) throw Object.assign(new Error("training-guidance-unavailable: training guidance runs on a native-state model server; collect this run through that server"), { code: "training-guidance-unavailable" });
         if (request.privileged_context) wireRequest.x_natlang_privileged_context = request.privileged_context;
@@ -228988,6 +229015,7 @@ function neuraleseServerModelTurn(options) {
         messages: structuredClone(nativeRecording ? preparedMessages : body.messages),
         tools: body.tools ? structuredClone(body.tools) : void 0,
         reply: structuredClone(message2),
+        ...body.chat_template_kwargs ? { chat_template_kwargs: structuredClone(body.chat_template_kwargs) } : {},
         blocks: structuredClone(reply.native_state?.blocks ?? []),
         ...adapters.length ? { adapters: [...adapters] } : {},
         ...consumptionModes ? { native_state_modes: { ...consumptionModes } } : {},
@@ -229302,6 +229330,7 @@ function grammarCapture(options) {
   const base = options.endpoint.replace(/\/$/, "");
   const headers = { "content-type": "application/json", ...options.headers };
   const markers = options.info.native_state?.role_marker_ids;
+  const capturesKind = serves(options.info, "native.producer-kind.capture");
   const tokenize3 = async (content, special) => {
     const response = await fetchModel(`${base}/tokenize`, {
       method: "POST",
@@ -229327,11 +229356,12 @@ function grammarCapture(options) {
     }
     throw new Error("neuralese-native-capture: the selected text does not occur exactly once in the reply");
   };
+  const kwargs = (call) => call.chat_template_kwargs ? { chat_template_kwargs: call.chat_template_kwargs } : {};
   const applyTemplate = async (call) => {
     const response = await fetchModel(`${base}/apply-template`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ messages: call.messages, ...call.tools.length ? { tools: call.tools } : {} })
+      body: JSON.stringify({ messages: call.messages, ...call.tools.length ? { tools: call.tools } : {}, ...kwargs(call) })
     });
     if (!response.ok) throw new Error(`neuralese-native-capture: apply-template failed (${response.status})`);
     return (await response.json()).prompt;
@@ -229385,7 +229415,7 @@ function grammarCapture(options) {
       if (lead.some((token) => markers.includes(token)))
         throw new Error("neuralese-native-capture: the producing reply carries role markers");
     } else {
-      const reply = call.reply?.length ? call.reply : [...await tokenize3(call.reasoning ?? "", false), thinkClose, ...await tokenize3(call.text ?? "", false)];
+      const reply = call.reply?.length ? call.reply : call.chat_template_kwargs?.enable_thinking === false ? await tokenize3(call.text ?? "", false) : [...await tokenize3(call.reasoning ?? "", false), thinkClose, ...await tokenize3(call.text ?? "", false)];
       const end = reply.findIndex((token) => ends.has(token));
       let stop = end < 0 ? reply.length : end;
       let start = reply.slice(0, stop).lastIndexOf(thinkClose) + 1;
@@ -229402,9 +229432,11 @@ function grammarCapture(options) {
     const response = await fetchModel(`${base}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify({
       messages: call.messages,
       ...call.tools.length ? { tools: call.tools } : {},
+      ...kwargs(call),
       temperature: 0,
       max_tokens: forced.length + 1,
-      grammar: `root ::= ${forced.map((token) => `<[${token}]>`).join(" ")}`
+      grammar: `root ::= ${forced.map((token) => `<[${token}]>`).join(" ")}`,
+      ...call.write === void 0 && capturesKind ? { x_natlang_producer_kind: "capture" } : {}
     }) });
     if (!response.ok) throw new Error(`neuralese-native-capture: forced span failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
     const result = await response.json();
@@ -229415,6 +229447,8 @@ function grammarCapture(options) {
     const ids = artifact.tensors.token_ids, view = new DataView(ids.data.buffer, ids.data.byteOffset, ids.data.byteLength);
     if (ids.shape[0] !== span.length || span.some((token, index) => BigInt(token) !== view.getBigInt64(index * 8, true)))
       throw new Error("neuralese-native-capture: the produced state does not hold the forced span");
+    if (call.write === void 0 && capturesKind && artifact.metadata.producer_kind !== "capture")
+      throw new Error("neuralese-native-capture: the server stored the capture without producer_kind capture");
     const prefix = [...prompt, ...lead, open];
     const text3 = typeof artifact.metadata.text === "string" ? artifact.metadata.text : "";
     const meta = nativeStateBlockMeta(artifact);
@@ -229470,6 +229504,7 @@ var init_native_operator = __esm({
     init_neuralese_store();
     init_hash();
     init_chat_completion();
+    init_neuralese_info();
     init_native_state_client();
   }
 });
@@ -229683,7 +229718,11 @@ async function writeContextBody(context) {
   if (context.promptSegments?.length) return { prompt_segments: context.promptSegments, reply_token_ids: context.reply ?? [] };
   if (context.prompt?.length) return { prompt_token_ids: context.prompt, reply_token_ids: context.reply ?? [] };
   const { materializeNativeStateSentinels: materializeNativeStateSentinels2 } = await Promise.resolve().then(() => (init_neuralese_server(), neuralese_server_exports));
-  return { messages: materializeNativeStateSentinels2(context.messages), tools: context.tools };
+  return {
+    messages: materializeNativeStateSentinels2(context.messages),
+    tools: context.tools,
+    ...context.chat_template_kwargs ? { chat_template_kwargs: context.chat_template_kwargs } : {}
+  };
 }
 var failure;
 var init_native_state_client = __esm({
@@ -233987,6 +234026,8 @@ return await ${compiled2.entrypoint}(Object.assign({}, self.inputs, __live.input
             const annotation2 = annotations.get(name);
             if (annotation2) type = inlineDeclaredTypes(parseTypeCached(annotation2), localTypes);
             if (!type && initializers.get(name)) type = this.scopeInitializerType(initializers.get(name), inferred);
+            if (!annotation2 && mutability.get(name) && type?.kind === "prim" && type.name === "null" && value !== null)
+              type = void 0;
             if (!type) type = await this.sourceCallableType(value, localTypes);
             if (!type) {
               try {
@@ -234247,6 +234288,172 @@ ${requested.tool}: ${refused.text}` };
         return ref;
       }
     };
+  }
+});
+
+// src/native/contract-hoist.ts
+function collectLiterals(type, env, depth2 = 0) {
+  if (depth2 > 8) return null;
+  const resolved = env.resolve(type);
+  if (resolved.kind === "lit") return [JSON.stringify(resolved.value)];
+  if (resolved.kind === "prim" && resolved.name === "boolean") return ["true", "false"];
+  if (resolved.kind === "prim" && resolved.name === "null") return ["null"];
+  if (resolved.kind === "union") {
+    const out = [];
+    for (const arm of resolved.members) {
+      const sub = collectLiterals(arm, env, depth2 + 1);
+      if (!sub) return null;
+      out.push(...sub);
+      if (out.length > 64) return null;
+    }
+    return [...new Set(out)];
+  }
+  if (resolved.kind === "refined" || resolved.kind === "untrusted") {
+    return collectLiterals(resolved.base, env, depth2 + 1);
+  }
+  return null;
+}
+function typeToSchema(type, env, depth2 = 0) {
+  if (depth2 > 8) return {};
+  const resolved = env.resolve(type);
+  switch (resolved.kind) {
+    case "prim":
+      if (resolved.name === "string") return { type: "string" };
+      if (resolved.name === "number") return { type: "number" };
+      if (resolved.name === "boolean") return { type: "boolean" };
+      if (resolved.name === "null") return { type: "null" };
+      return {};
+    case "lit":
+      return { const: resolved.value };
+    case "list":
+      return { type: "array", items: typeToSchema(resolved.element, env, depth2 + 1) };
+    case "dict":
+      return { type: "object", additionalProperties: typeToSchema(resolved.element, env, depth2 + 1) };
+    case "tuple":
+      return {
+        type: "array",
+        minItems: resolved.minLength ?? resolved.elements.length,
+        maxItems: resolved.elements.length,
+        prefixItems: resolved.elements.map((el2) => typeToSchema(el2, env, depth2 + 1))
+      };
+    case "record": {
+      const properties = {};
+      const required = [];
+      for (const field of resolved.fields) {
+        properties[field.name] = typeToSchema(field.type, env, depth2 + 1);
+        if (!field.optional) required.push(field.name);
+      }
+      return {
+        type: "object",
+        properties,
+        ...required.length ? { required } : {},
+        additionalProperties: false
+      };
+    }
+    case "union": {
+      const literals = collectLiterals(resolved, env, depth2);
+      if (literals) return { enum: literals.map((raw) => JSON.parse(raw)) };
+      return { anyOf: resolved.members.map((arm) => typeToSchema(arm, env, depth2 + 1)) };
+    }
+    case "refined":
+    case "untrusted":
+      return typeToSchema(resolved.base, env, depth2 + 1);
+    default:
+      return {};
+  }
+}
+function hoistReturnContract(returns, env) {
+  const jsonSchema = typeToSchema(returns, env);
+  const allowedLiterals = collectLiterals(returns, env);
+  const directive = allowedLiterals ? `Structural contract: return exactly one of ${allowedLiterals.join(" | ")}.` : jsonSchema.type === "object" && Array.isArray(jsonSchema.required) ? `Structural contract: return an object with required keys [${jsonSchema.required.join(", ")}].` : `Structural contract: return value matching ${JSON.stringify(jsonSchema)}.`;
+  const fastCheck = (value) => {
+    try {
+      coerce(value, returns, env, "return");
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof Reject) return { ok: false, reason: error.message };
+      return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+  };
+  return { jsonSchema, allowedLiterals, directive, fastCheck };
+}
+var init_contract_hoist = __esm({
+  "src/native/contract-hoist.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_values();
+  }
+});
+
+// src/native/branch-search.ts
+function rankBranchCandidates(candidates) {
+  return [...candidates].sort((a, b) => {
+    if (a.crispOk !== b.crispOk) return a.crispOk ? -1 : 1;
+    if (b.verifierScore !== a.verifierScore) return b.verifierScore - a.verifierScore;
+    return a.index - b.index;
+  });
+}
+async function evaluateCrisp(turn, validateReturnValue) {
+  if (turn.malformed_call) return { ok: false, reason: `malformed_call:${turn.malformed_call}` };
+  if (turn.protocol_failure) return { ok: false, reason: "protocol_failure" };
+  if (turn.truncated && !turn.calls?.length) return { ok: false, reason: "truncated_without_call" };
+  const calls = turn.calls ?? [];
+  if (validateReturnValue) {
+    for (const [name, args] of calls) {
+      if (name === "return_result") {
+        if (args && args.status === "success" && Object.hasOwn(args, "value")) {
+          const verdict = await validateReturnValue(args.value);
+          if (!verdict.ok) return { ok: false, reason: verdict.reason ?? "return_contract_failed" };
+        }
+      }
+    }
+  }
+  return { ok: true };
+}
+async function runPrefixSharedBranchSearch(baseRequest, sampleTurn, options, meta) {
+  const n = Math.max(1, Math.floor(options.branches));
+  const baseSeed = typeof baseRequest.seed === "number" ? baseRequest.seed : 0;
+  const branchTemp = options.branchTemperature ?? 0.6;
+  const requests = Array.from({ length: n }, (_10, index) => index === 0 ? baseRequest : {
+    ...baseRequest,
+    temperature: baseRequest.temperature && baseRequest.temperature > 0 ? baseRequest.temperature : branchTemp,
+    ...typeof baseRequest.seed === "number" ? { seed: baseSeed + index * 1009 } : {}
+  });
+  const turns = await Promise.all(requests.map((req, index) => sampleTurn(req, index)));
+  const evaluated = await Promise.all(
+    turns.map(async (turn, index) => {
+      const crisp = await evaluateCrisp(turn, options.validateReturnValue);
+      let score = 0.5;
+      if (options.scoreBranch) {
+        const raw = await options.scoreBranch(turn, index, requests[index]);
+        score = Number.isFinite(raw) ? raw : 0.5;
+      }
+      return { index, turn, crispOk: crisp.ok, ...crisp.reason ? { crispReason: crisp.reason } : {}, verifierScore: score };
+    })
+  );
+  const ranked = rankBranchCandidates(evaluated);
+  const selected = ranked[0];
+  const pass1 = evaluated[0];
+  const branchWin = selected.index !== 0 && (!pass1.crispOk && selected.crispOk || pass1.crispOk === selected.crispOk && selected.verifierScore > pass1.verifierScore + 1e-6);
+  if (branchWin && options.onBranchWin) {
+    options.onBranchWin({
+      callId: meta.callId,
+      turnNumber: meta.turnNumber,
+      branches: n,
+      selectedIndex: selected.index,
+      pass1CrispOk: pass1.crispOk,
+      selectedCrispOk: selected.crispOk,
+      pass1Score: pass1.verifierScore,
+      selectedScore: selected.verifierScore,
+      selectedTurn: selected.turn
+    });
+  }
+  return { selected, ranked, branchWin };
+}
+var init_branch_search = __esm({
+  "src/native/branch-search.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
   }
 });
 
@@ -234781,6 +234988,8 @@ var init_agent = __esm({
     init_nz_file();
     init_scoped_fs();
     init_cutoff();
+    init_contract_hoist();
+    init_branch_search();
     init_prompt();
     init_pluggable();
     init_model_facing();
@@ -235015,9 +235224,21 @@ ${notes}` : opening;
           invocation_id: `${callId}#operator-${index}`,
           messages: this.softened(viewSiteMessages(site2.value, site2.instructions), site2.operator),
           tools: [],
+          // The run's sampling law, as the call's own turns: without it a server sampled the operator greedily (a missing
+          // temperature is 0 on the native engines), so collection never explored what an operator writes. A greedy host
+          // (the product runtime's default) samples the operator at temperature 1, the law it is trained under: its reply
+          // is captured from exact ids, which an engine reports only for a sampled reply (`native-rl-sampling-law`).
+          temperature: this.options.temperature !== void 0 && this.options.temperature > 0 ? this.options.temperature : 1,
           seed: session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(session.runtime.seedPolicy.root, runSeedKey(session.runtime.options), session.lam.attempts, `operator-${index}`, 0),
-          // Reasoning and reply share the actual request allowance; the shared graph reservation below may lower it.
-          max_tokens: OPERATOR_REASONING_TOKENS + OPERATOR_SPAN_CAPS[site2.operator]
+          // No reasoning, as the operator rows train it (an empty think block, then the summary): the template's
+          // `enable_thinking: false`, so the reply is the summary from its first token. Before, a 2048-token reasoning
+          // allowance ran out inside the reasoning on long values and the capture had no content to keep.
+          thinking: false,
+          // The reply cap; the shared graph reservation below may lower it.
+          max_tokens: OPERATOR_SPAN_CAPS[site2.operator],
+          // Its reply is captured from the exact ids it was sampled as: a host outside collection asks for them too (before,
+          // every product-runtime operator write failed with "native.capture needs the call's exact prompt and sampled reply ids").
+          exact_ids: true
         };
         const reservation = await this.options.modelBudget?.reserve(request.max_tokens ?? null, session.runtime.signal);
         if (this.options.modelBudget && !reservation) throw new Error("operator model request or token budget exhausted");
@@ -236232,6 +236453,70 @@ ${notes}` : opening;
         const firstValues = encoded.messages.findIndex((message2) => message2.role === "tool");
         const cacheMessages = firstValues >= 0 ? firstValues : encoded.messages.length - 1;
         const reasoningTemperature = decisionReasoningTemperature(this.options.temperature);
+        const compiledDecision = this.options.compiledDecision;
+        if (compiledDecision && joint && replies && replies.length >= 2) {
+          const scoredFast = await runInFrame(session.runtime.frame, () => decide2({
+            messages: encoded.messages,
+            options: replies,
+            cache_messages: cacheMessages,
+            ...callId ? { invocation_id: callId, invocation_role: session.runtime.options.parentCallId ? "child" : "root" } : {},
+            ...capturedGuidance ? { x_natlang_privileged_context: capturedGuidance } : {},
+            ...adapters.length ? { adapters } : {}
+          }, session.runtime.signal));
+          const fast = scoredFast.log_probs.length === replies.length && scoredFast.log_probs.every((v10) => Number.isFinite(v10)) ? scoredFast : void 0;
+          if (fast) {
+            const temp = Math.max(1e-6, compiledDecision.temperature);
+            const scaled = fast.log_probs.map((lp2) => lp2 / temp);
+            const probs = softmax(scaled);
+            let bestIdx = 0;
+            for (let i = 1; i < probs.length; i++) if (probs[i] > probs[bestIdx]) bestIdx = i;
+            const maxProb = probs[bestIdx];
+            let riskTripped = false;
+            if (compiledDecision.riskThresholds) {
+              for (let i = 0; i < replies.length; i++) {
+                const rawLabel = (() => {
+                  try {
+                    const p = JSON.parse(replies[i]);
+                    return typeof p === "string" ? p : replies[i];
+                  } catch {
+                    return replies[i];
+                  }
+                })();
+                const floor = compiledDecision.riskThresholds[rawLabel] ?? compiledDecision.riskThresholds[replies[i]];
+                if (floor !== void 0 && probs[i] >= floor && i !== bestIdx) {
+                  riskTripped = true;
+                  break;
+                }
+              }
+            }
+            if (!riskTripped && maxProb >= compiledDecision.fastThreshold) {
+              const fields2 = recordMarginals(joint.map((item) => item.value), probs);
+              session.runtime.trace.emit("decision_readout", {
+                call_id: callId,
+                phase: "scored",
+                fast_path: "compiled-decision",
+                temperature: temp,
+                options: replies,
+                log_probs: fast.log_probs,
+                probabilities: probs,
+                tokens: fast.tokens ?? null,
+                chosen: bestIdx,
+                ...fields2 ? { fields: fields2 } : {},
+                ...fast.prompt_tokens !== void 0 ? { prompt_tokens: fast.prompt_tokens } : {},
+                duration_ms: Math.round(performance.now() - started)
+              });
+              lam.return = joint[bestIdx].value;
+              lam.note = JSON.stringify({
+                readout: "decision",
+                fastPath: "compiled-decision",
+                temperature: temp,
+                probabilities: Object.fromEntries(replies.map((reply, index) => [reply, probs[index]]))
+              });
+              if (!session.finish()) return "decision readout chose a value the declared type rejects";
+              return;
+            }
+          }
+        }
         const samples = lam.readout === "instant" || reasoningRefused.has(this.driver) ? 0 : decisionSamples(this.options.decisionSamples, reasoningTemperature);
         let reasonings = [];
         if (samples > 0) {
@@ -236768,6 +237053,15 @@ ${notes}` : opening;
         ].map((text3) => text3.trim()).filter(Boolean).join("\n\n");
         const systemPrompt = () => typeof this.options.systemPrompt === "function" ? this.options.systemPrompt() : this.options.systemPrompt ?? SYSTEM_PROMPT;
         const declaredReturns = session.lam.type.kind === "lambda" ? session.lam.type.returns : void 0;
+        let hoistedContractDirective = "";
+        if (this.options.hoistContracts && declaredReturns) {
+          try {
+            hoistedContractDirective = hoistReturnContract(declaredReturns, session.env).directive;
+          } catch (error) {
+            session.runtime.trace.emit("contract_hoist_error", { call_id: session.runtime.currentCallId ?? null, error: String(error?.message ?? error).slice(0, 300) });
+          }
+        }
+        const effectiveGuidance = [guidance, hoistedContractDirective].map((text3) => text3.trim()).filter(Boolean).join("\n\n");
         let functionResult;
         try {
           functionResult = declaredReturns && session.env.resolve(declaredReturns).kind === "lambda" ? formatType(declaredReturns) : void 0;
@@ -236775,7 +237069,7 @@ ${notes}` : opening;
           functionResult = void 0;
         }
         const notes = callNotes({
-          guidance,
+          guidance: effectiveGuidance,
           ownCode: Object.keys(session.lam.codebase).length > 0,
           functionResult,
           folder: session.lam.projectTransaction ? {
@@ -237120,6 +237414,8 @@ ${notes}` : opening;
               ...currentRendering === "program-header" ? { response_tools: offered } : {},
               // A turn that offers one tool it must use (the compaction turn, the last turn) requires a tool call.
               ...availableTools !== allTools && currentRendering !== "program-header" ? { tool_choice: "required" } : {},
+              // The compaction turn's note is captured in place from its exact ids under learned compaction (noteRef).
+              ...nearLimit && !lastTurn && this.options.neuralese?.capture && (currentTemperature ?? 0) > 0 && pluggableMode(this.compactionSetting(), "crisp") !== "crisp" ? { exact_ids: true } : {},
               ...currentTemperature === void 0 ? {} : { temperature: currentTemperature },
               seed: session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(
                 session.runtime.seedPolicy.root,
@@ -237137,7 +237433,30 @@ ${notes}` : opening;
             if (this.options.modelBudget && !reservation) return budgetStop("graph model request or token budget exhausted");
             if (reservation) turnRequest.max_tokens = reservation.limit;
             calledDriver = true;
-            response = await runInFrame(session.runtime.frame, () => turnOptions ? currentDriver(turnRequest, session.runtime.signal, turnOptions) : currentDriver(turnRequest, session.runtime.signal));
+            const branchCfg = !fallbackIndex ? this.options.branchSearch : void 0;
+            if (branchCfg && branchCfg.branches > 1) {
+              const hoisted = session.lam.type.kind === "lambda" ? hoistReturnContract(session.lam.type.returns, session.env) : void 0;
+              const validateReturnValue = branchCfg.validateReturnValue ?? (hoisted ? (value) => hoisted.fastCheck(value) : void 0);
+              const searched = await runPrefixSharedBranchSearch(
+                turnRequest,
+                (req) => runInFrame(session.runtime.frame, () => turnOptions ? currentDriver(req, session.runtime.signal, turnOptions) : currentDriver(req, session.runtime.signal)),
+                { ...branchCfg, ...validateReturnValue ? { validateReturnValue } : {} },
+                { callId, turnNumber: turn }
+              );
+              response = searched.selected.turn;
+              session.runtime.trace.emit("branch_search", {
+                call_id: callId,
+                turn,
+                branches: branchCfg.branches,
+                selected_index: searched.selected.index,
+                pass1_crisp_ok: searched.ranked.find((c) => c.index === 0)?.crispOk ?? true,
+                selected_crisp_ok: searched.selected.crispOk,
+                selected_verifier_score: searched.selected.verifierScore,
+                branch_win: searched.branchWin
+              });
+            } else {
+              response = await runInFrame(session.runtime.frame, () => turnOptions ? currentDriver(turnRequest, session.runtime.signal, turnOptions) : currentDriver(turnRequest, session.runtime.signal));
+            }
             exceededGraphReservation = reservation?.limit !== null && reservation?.limit !== void 0 && response.completion_tokens !== void 0 && response.completion_tokens > reservation.limit;
             reservation?.finish(response.completion_tokens);
             reservation = void 0;
@@ -238822,6 +239141,44 @@ var init_binding = __esm({
   }
 });
 
+// src/runtime/jit.ts
+import { sha256 as sha2563 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+function sha256Hex(text3) {
+  return bytesToHex(sha2563(textEncoder.encode(text3)));
+}
+async function compileOnCreateClosure(cache, req, compileFn) {
+  const combined = req.partialArgsJson ? `${req.resolvedHeaderText}
+__NATLANG_PARTIAL__:${req.partialArgsJson}` : req.resolvedHeaderText;
+  const headerSha = sha256Hex(combined);
+  const provenance = {
+    siteId: req.siteId,
+    headerSha,
+    compilerSha: req.compilerSha,
+    policySha: req.policySha,
+    baseGgufSha256: req.baseGgufSha256
+  };
+  const cached = cache.get(provenance);
+  if (cached) return cached;
+  const built = await compileFn(req, headerSha);
+  return cache.put({
+    tier: "1",
+    provenance,
+    adapterId: built.adapterId,
+    nativeStateId: built.nativeStateId,
+    createdAtMs: Date.now()
+  });
+}
+var textEncoder;
+var init_jit = __esm({
+  "src/runtime/jit.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_pluggable();
+    textEncoder = new TextEncoder();
+  }
+});
+
 // src/skills/disclosure.ts
 function renderSkillListing(set, diagnostics = []) {
   if (!set.size && !diagnostics.length) return "";
@@ -239360,7 +239717,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
   const owner = definition.programId ?? (descriptor2 ? view.program?.id : frame.programOwner);
   const eligibleGuidance = !!owner && (owner === view.program?.id || !!view.program?.guidanceScope.importedPrograms.includes(owner));
   const weights = weightBindingFor(task.weights, owner)?.resolve(definition.id, descriptor2?.key, definition.contextId ?? null);
-  const adaptationProvenance = view.program || weights ? {
+  let adaptationProvenance = view.program || weights ? {
     ...view.program ? view.provenance(definition.id, owner) : {},
     ...weights ? { weights: {
       release: weights.release,
@@ -239628,6 +239985,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       task.discardGraphCall(callId, frame.parentCallId);
       throw new Deopt(attempt.declined ?? "no crisp case of this tier served the call");
     }
+    const compilerOpts = task.runtime.options.compiler;
     const environment = task.environment();
     let runtime;
     const lexicalServices = unrecordedServices(frame.services ?? task.services);
@@ -239710,6 +240068,12 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       decisionSamples: model.decisionSamples,
       guidance: model.guidance,
       promptRendering: model.promptRendering,
+      ...compilerOpts?.compiledDecisions ? (() => {
+        const cal = compilerOpts.compiledDecisions.get(definition.id) ?? compilerOpts.compiledDecisions.get(definition.name);
+        return cal ? { compiledDecision: cal } : {};
+      })() : {},
+      ...compilerOpts?.branchSearch ? { branchSearch: compilerOpts.branchSearch } : {},
+      ...compilerOpts?.hoistContracts ? { hoistContracts: true } : {},
       // Live events (plans/STREAMING.md §1.6): the call's model deltas, tagged with the call; nothing without a subscriber.
       ...task.live ? { onDelta: liveDeltas(task.live, {
         taskId: task.id,
@@ -239796,8 +240160,65 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       );
       const instructions = node.body.replace(/^\n+|\n+$/g, "");
       Object.assign(childFrame.invocationTexts, { instructions, ...node.skills ? { skills: { ...node.skills.documents } } : {} });
-      if (weights?.soft) {
-        const soft = weights.soft, kept = [];
+      let effectiveWeights = weights;
+      if (!effectiveWeights && compilerOpts?.jit) {
+        const jit = compilerOpts.jit;
+        const partialArgsJson = definition.partialBindings?.length ? JSON.stringify(definition.partialBindings) : void 0;
+        const site2 = { siteId: definition.id, resolvedHeaderText: instructions, ...partialArgsJson ? { partialArgsJson } : {} };
+        try {
+          const entry = await compileOnCreateClosure(
+            jit.cache,
+            { ...site2, compilerSha: jit.compilerSha, policySha: jit.policySha, ...jit.baseGgufSha256 ? { baseGgufSha256: jit.baseGgufSha256 } : {} },
+            () => jit.compile(site2)
+          );
+          if (entry.nativeStateId && !isNativeStateId(entry.nativeStateId))
+            throw new TypeError(`the JIT compiler returned ${JSON.stringify(entry.nativeStateId)}, not a native-state block ID`);
+          if (entry.adapterId || entry.nativeStateId) {
+            const stackEntries = entry.adapterId ? [{ id: entry.adapterId, scale: 1, node: `jit:${definition.id}` }] : [];
+            const jitStack = {
+              release: `jit:${entry.cacheKey.slice(0, 16)}`,
+              program: owner ?? definition.programId ?? "jit",
+              binding: definition.id,
+              requested: stackEntries,
+              effective: stackEntries,
+              skipped: [],
+              identity: entry.cacheKey,
+              baseIdentity: jit.baseGgufSha256 ?? jit.policySha,
+              status: "ready",
+              ...entry.nativeStateId ? { soft: { instructions: { state: entry.nativeStateId, textSha256: hexDigest(instructions) }, skills: {} } } : {}
+            };
+            effectiveWeights = jitStack;
+            childFrame.weights = jitStack;
+            if (runtime.frame) runtime.frame = { ...runtime.frame, weights: jitStack };
+            const recorded2 = {
+              release: jitStack.release,
+              binding: jitStack.binding,
+              identity: jitStack.identity,
+              status: jitStack.status,
+              effective: stackEntries.map(({ id: id3, scale }) => ({ id: id3, scale }))
+            };
+            const manifestEvent = runtime.trace.events[0];
+            if (manifestEvent?.kind === "manifest") manifestEvent.weight_stack = recorded2;
+            adaptationProvenance = { ...adaptationProvenance ?? {}, weights: { ...recorded2, requested: stackEntries, skipped: [] } };
+            runtime.trace.emit("jit_compile_bound", {
+              call_id: callId,
+              site_id: definition.id,
+              cache_key: entry.cacheKey,
+              adapter_id: entry.adapterId,
+              native_state_id: entry.nativeStateId,
+              cache_hits: entry.hits
+            });
+          }
+        } catch (error) {
+          runtime.trace.emit("jit_compile_error", {
+            call_id: callId,
+            site_id: definition.id,
+            error: String(error?.message ?? error).slice(0, 300)
+          });
+        }
+      }
+      if (effectiveWeights?.soft) {
+        const soft = effectiveWeights.soft, kept = [];
         if (soft.instructions && hexDigest(instructions) === soft.instructions.textSha256) node.body = nativeStateSentinel(soft.instructions.state);
         else if (soft.instructions) kept.push("instructions");
         for (const [target, use] of Object.entries(soft.skills)) {
@@ -239807,7 +240228,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
         }
         if (kept.length) runtime.trace.emit("soft_state_text", {
           call_id: callId,
-          binding: weights.binding,
+          binding: effectiveWeights.binding,
           text: kept,
           reason: "the text differs from the one its soft state was primed from; it stays text"
         });
@@ -240146,6 +240567,7 @@ var init_kernel = __esm({
     init_compilations();
     init_registry();
     init_binding();
+    init_jit();
     init_neuralese2();
     init_disclosure();
     isScopedHandle = (value) => value instanceof Folder || value instanceof FolderHandle || value instanceof FileHandle;
@@ -241011,7 +241433,11 @@ function partialCallable(original, meta, bound) {
   const isReducer = definition.subtype === "directory-reducer";
   return makeCallable({
     ...meta,
-    definition: { ...definition, params: definition.params.slice(values.length) },
+    definition: {
+      ...definition,
+      params: definition.params.slice(values.length),
+      partialBindings: [...definition.partialBindings ?? [], ...values]
+    },
     invoke: (args, frame, at, folder2) => {
       const combined = isReducer && (folder2 || args[0] instanceof Folder || args[0] instanceof FolderHandle) ? [args[0], ...values, ...args.slice(1)] : [...values, ...args];
       return meta.invoke(combined, frame, at, folder2);
@@ -241976,7 +242402,7 @@ var init_data_layout = __esm({
 });
 
 // src/native/scoped-fs.ts
-import { sha256 as sha2563 } from "@noble/hashes/sha2.js";
+import { sha256 as sha2564 } from "@noble/hashes/sha2.js";
 function requireStringPath(path2, method) {
   if (typeof path2 === "string") return path2;
   if (path2 && typeof path2 === "object" && typeof path2.path === "string")
@@ -242010,7 +242436,7 @@ function equalBytes(left, right) {
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 function hexDigest2(value) {
-  return Array.from(sha2563(value), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(sha2564(value), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 function under(path2, parent) {
   return !parent || path2 === parent || path2.startsWith(`${parent}/`);
@@ -243402,6 +243828,7 @@ __export(lowered_exports, {
   fuseSite: () => fuseSite,
   guard: () => guard,
   importedNativeArtifacts: () => importedNativeArtifacts,
+  inSharedModuleTopLevel: () => inSharedModuleTopLevel,
   inline: () => inline,
   inlineSelected: () => inlineSelected,
   instantiate: () => instantiate,
@@ -243419,6 +243846,7 @@ __export(lowered_exports, {
   registerCrisp: () => registerCrisp,
   selectedService: () => selectedService,
   service: () => service,
+  sharedModuleValue: () => sharedModuleValue,
   site: () => site,
   targetType: () => targetType,
   uncompiled: () => uncompiled
@@ -243636,7 +244064,23 @@ function validateReboundCaptures(plan, next2, accessors) {
   }
   return Object.fromEntries(plan.captures.map((capture) => [capture.name, capture.shadowedByParameter ? next2[capture.name] : coerce(next2[capture.name], parseType(targetType(capture.type)), env, `capture/${capture.name}`)]));
 }
+function inSharedModuleTopLevel(evaluate) {
+  sharedModuleTopLevel++;
+  try {
+    return evaluate();
+  } finally {
+    sharedModuleTopLevel--;
+  }
+}
+function sharedModuleValue(value) {
+  const meta = callableMeta(value);
+  return meta?.created ? makeCallable({ ...meta, created: void 0 }) : value;
+}
 function inline(plan, values, accessors, context, version = NATLANG_COMPILE_VERSION, bound, origin) {
+  const value = inlineInstance(plan, values, accessors, context, version, bound, origin);
+  return sharedModuleTopLevel ? sharedModuleValue(value) : value;
+}
+function inlineInstance(plan, values, accessors, context, version = NATLANG_COMPILE_VERSION, bound, origin) {
   if (version !== NATLANG_COMPILE_VERSION)
     throw new Error(`this module was compiled for natlang output version ${version}; rebuild it with natlang build`);
   const renderedValues = values.map(interpolationText);
@@ -243928,7 +244372,7 @@ function selectedService(name) {
 function uncompiled() {
   throw new Error("This `nl` expression was not compiled by the natlang compiler. Build the project with `natlang build` (or run it with `natlang run`); raw `nl` text is never evaluated at runtime.");
 }
-var readNeuralese, toStringValue, ARRAY_JOIN, ARRAY_TO_STRING, OBJECT_TO_STRING, REFLECT_APPLY;
+var readNeuralese, toStringValue, ARRAY_JOIN, ARRAY_TO_STRING, OBJECT_TO_STRING, REFLECT_APPLY, sharedModuleTopLevel;
 var init_lowered = __esm({
   "src/runtime/lowered.ts"() {
     "use strict";
@@ -243959,6 +244403,7 @@ var init_lowered = __esm({
     ARRAY_TO_STRING = Array.prototype.toString;
     OBJECT_TO_STRING = Object.prototype.toString;
     REFLECT_APPLY = Reflect.apply;
+    sharedModuleTopLevel = 0;
   }
 });
 

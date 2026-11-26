@@ -1,0 +1,10 @@
+{
+  "core": "e404b1a8150df340d920374f64d22ea05c259fed",
+  "sourceBase": "0561a5b2d9f6e5dea217d623b03d2406e8ab74b9",
+  "change": "Canonical generated SDK source including computed-value completion and same-action evolving null locals; all prior upstream Core source retained",
+  "stageUnit": "vibe-source48-official-five-sdk-20261126a",
+  "stageFreshReproduction": "all5targets292filesPASS67.66s1.1GiB",
+  "privateCorpusChanged": false,
+  "consumerStatus": "44 Base controls and7 System serving controls PASS, including real NativeRecords/effectful HOF/realm; stale Recovery owner .ts expectation corrected to actual .nl declaration",
+  "consumerEvidence": "/home/werg/vibe-v48-release-ops/sdk-consumer-proof.json"
+}

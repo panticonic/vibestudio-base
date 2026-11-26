@@ -232,7 +232,8 @@
         "reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy"
       ],
       "types": [
-        "CoordinatedRevisionResult"
+        "CoordinatedRevisionFindings",
+        "RevisionInvestigation"
       ]
     },
     "workOnDemoPortfolio": {

@@ -70,9 +70,9 @@
     "additionalArguments": {}
   },
   "coordinated-revision": {
-    "program": "skills/open-user-goal/reviseCoordinatedDocuments.ts",
+    "program": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
     "callable": "reviseCoordinatedDocuments",
-    "resultType": "CoordinatedRevisionResult",
+    "resultType": "CoordinatedRevisionFindings",
     "skill": "coordinatedRevision",
     "parameterNames": [
       "goal"

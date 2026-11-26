@@ -62,8 +62,10 @@ export type NativeStateMetadata = {
     adapter_binding?: NativeAdapterBinding;
     derivation?: NativeStateDerivation;
     /** 'text': a text write; 'span': a produce span in its producer's call. Such a state (exact, no adapter binding or
-     * derivation) is read as its token ids inline in the reader's context on every engine (`in-context-text`). */
-    producer_kind?: 'text' | 'span';
+     * derivation) is read as its token ids inline in the reader's context on every engine (`in-context-text`).
+     * 'capture': a reply captured in its own context (a compaction operator's reply, a `compact_history` note), spliced
+     * as stored on every engine unless `NATLANG_NEURALESE_CAPTURE_IN_CONTEXT=1` (`serve/engine.py` `reads_in_context`). */
+    producer_kind?: 'text' | 'span' | 'capture';
 } & {
     schema: 'neuralese.native-state/1';
 };
@@ -256,4 +258,6 @@ export type NativeWriteContext = {
         id: string;
     })[];
     reply?: number[];
+    /** The chat-template switches the call was rendered with (an operator's `{enable_thinking: false}`). */
+    chat_template_kwargs?: Record<string, unknown>;
 };

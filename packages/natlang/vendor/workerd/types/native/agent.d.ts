@@ -6,6 +6,7 @@ import type { DecisionScorer, ModelTurn, ModelTurnDelta, ModelTurnOptions, Model
 import { type FileToolSurface } from './prompt.js';
 import { type Folder } from './scoped-fs.js';
 import type { TrainingGuidance } from './training-guidance.js';
+import { type BranchSearchOptions } from './branch-search.js';
 import { type PluggableSetting } from '../runtime/pluggable.js';
 import { type UntrustedRegistry } from './untrusted.js';
 import { type NeuraleseRuntimeOptions } from './neuralese.js';
@@ -228,6 +229,17 @@ export declare class NativeToolAgent {
         compactionChars?: number;
         /** Program guidance states: `call` (default) primes them at their real position, `text` writes them from text alone. */
         guidancePriming?: 'call' | 'text';
+        /** Calibrated single-pass `readout: decision` settlement policy (`plans/NATLANG_COMPILER.md` §6.1). */
+        compiledDecision?: {
+            temperature: number;
+            fastThreshold: number;
+            riskThresholds?: Readonly<Record<string, number>>;
+        };
+        /** Prefix-shared `branch@N` search with crisp-first + StepVerifierHead ranking (`plans/NATLANG_COMPILER.md` §6.2).
+         * The kept turn is a selection over samples, not one policy sample: never set it for on-policy collection. */
+        branchSearch?: BranchSearchOptions;
+        /** Hoist deterministic structural return-type directives into the call's opening notes on pass 1 (§6.4). */
+        hoistContracts?: boolean;
         /**
          * Receives the deltas of the call's model turns as they stream (plans/STREAMING.md §1.6), with the turn's number
          * (as its `model_request` trace events give it). A turn taken again after a failed request first gets a `reset`.
@@ -335,6 +347,17 @@ export declare class NativeToolAgent {
         compactionChars?: number;
         /** Program guidance states: `call` (default) primes them at their real position, `text` writes them from text alone. */
         guidancePriming?: 'call' | 'text';
+        /** Calibrated single-pass `readout: decision` settlement policy (`plans/NATLANG_COMPILER.md` §6.1). */
+        compiledDecision?: {
+            temperature: number;
+            fastThreshold: number;
+            riskThresholds?: Readonly<Record<string, number>>;
+        };
+        /** Prefix-shared `branch@N` search with crisp-first + StepVerifierHead ranking (`plans/NATLANG_COMPILER.md` §6.2).
+         * The kept turn is a selection over samples, not one policy sample: never set it for on-policy collection. */
+        branchSearch?: BranchSearchOptions;
+        /** Hoist deterministic structural return-type directives into the call's opening notes on pass 1 (§6.4). */
+        hoistContracts?: boolean;
         /**
          * Receives the deltas of the call's model turns as they stream (plans/STREAMING.md §1.6), with the turn's number
          * (as its `model_request` trace events give it). A turn taken again after a failed request first gets a `reset`.

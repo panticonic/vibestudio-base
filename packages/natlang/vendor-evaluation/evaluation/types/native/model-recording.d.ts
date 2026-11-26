@@ -52,6 +52,8 @@ export type RecordedTurn = {
     readonly graph_turn?: string;
     readonly messages: unknown[];
     readonly tools?: unknown[];
+    /** The chat-template switches the turn was rendered with (an operator's `{enable_thinking: false}`). */
+    readonly chat_template_kwargs?: Readonly<Record<string, unknown>>;
     /** The assistant message as the server returned it: content and tool-call arguments may hold block parts. */
     readonly reply: Record<string, unknown>;
     /** Write records of the blocks this turn wrote. */

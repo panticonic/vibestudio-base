@@ -33,6 +33,8 @@ export declare const __natlang: Readonly<{
     targetType(target: import("../compiler/targets.js").TargetDescriptor): string;
     planDefinition(plan: import("../compiler/inline.js").InlineLambdaPlan, codebase?: Record<string, unknown>): import("./kernel.js").CallableDefinition;
     interpolate(strings: readonly string[], values: readonly unknown[]): string;
+    inSharedModuleTopLevel<T>(evaluate: () => T): T;
+    sharedModuleValue<T>(value: T): T;
     inline(plan: import("../compiler/inline.js").InlineLambdaPlan, values: readonly unknown[], accessors: import("./lowered.js").CaptureAccessors, context?: Record<string, unknown>, version?: number, bound?: import("./context.js").Frame, origin?: import("./lowered.js").InlineInstructionOrigin): import("./callable.js").NatlangCallable;
     inlineSelected(plan: import("../compiler/inline.js").InlineLambdaPlan, values: readonly unknown[], accessors: Record<string, unknown>, context?: Record<string, unknown>, version?: number, bound?: import("./context.js").Frame, origin?: import("./lowered.js").InlineInstructionOrigin): Promise<import("./callable.js").NatlangCallable>;
     instantiate(fn: unknown, representation: import("./index.js").Representation, site: string): (...args: unknown[]) => Promise<unknown>;
