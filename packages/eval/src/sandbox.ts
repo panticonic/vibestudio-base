@@ -327,6 +327,9 @@ interface LoadedLibraryMetadata {
  * panel module merely because it names the same specifier.
  */
 const loadedLibraries = new WeakMap<Record<string, unknown>, Map<string, LoadedLibraryMetadata>>();
+// A host may copy its registry between cells while retaining the exact exports.
+// Registry identity alone must not erase an imported function's guard owner.
+const loadedLibraryNamespaces = new WeakMap<object, LoadedLibraryMetadata>();
 
 function loadedLibraryMetadata(
   moduleMap: Record<string, unknown>,
@@ -340,7 +343,10 @@ function assertLibraryExecutionBudget(
   specifier: string,
   execution: typeof execute
 ): void {
-  const library = loadedLibraryMetadata(moduleMap, specifier);
+  const namespace=moduleMap[specifier];
+  const library = loadedLibraryMetadata(moduleMap, specifier) ??
+    (namespace!==null && (typeof namespace==="object" || typeof namespace==="function")
+      ? loadedLibraryNamespaces.get(namespace) : undefined);
   if (execution !== execute && library && library.execution !== execution)
     throw new SandboxInfrastructureError(
       "execution_budget_cached_module_unsupported",
@@ -456,7 +462,11 @@ async function loadLibraryBundle(
     registry = new Map();
     loadedLibraries.set(moduleMap, registry);
   }
-  registry.set(specifier, { bundle: artifact.bundle, ref: refKey, execution: executeModule });
+  const metadata={ bundle: artifact.bundle, ref: refKey, execution: executeModule };
+  registry.set(specifier, metadata);
+  const namespace=moduleMap[specifier];
+  if(namespace!==null && (typeof namespace==="object" || typeof namespace==="function"))
+    loadedLibraryNamespaces.set(namespace,metadata);
 }
 
 /**
