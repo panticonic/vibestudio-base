@@ -5,4 +5,4 @@ args:
   operation: ReconcileOperation
 returns: ReconcileEffect
 ---
-For kind apply call services.reconciliationNative.apply with the exact head and edits. For kind merge call services.reconciliationNative.merge with the exact head and decisions. Return the native result exactly.
+For kind apply call reconciliationNative.apply with the exact head and edits. For kind merge call reconciliationNative.merge with the exact head and decisions. Return the native result exactly.

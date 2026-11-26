@@ -6,11 +6,12 @@ export type ReconcileChoice = {
   id: string;
   options: ReconcileResolution[];
 };
-export type ReconcileView = { head: string; source: string; baseline: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
+export type ReconcileView = { head: string; source: string; baseline: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[]; operationFeedback: ReconcileOperationFeedback[] };
 export type ReconcileEdit = { path: string; before: string; after: string };
 export type ReconcileDecision = { coordinate: { kind: "file"; id: string }; resolution: ReconcileResolution; rationale: string };
-export type ReconcilePlan = { edits: ReconcileEdit[]; decisions: ReconcileDecision[]; reason: string } | null;
+export type ReconcilePlan = { status:"ready"; edits: ReconcileEdit[]; decisions: ReconcileDecision[]; reason: string } | {status:"held";reason:string};
 export type ReconcileEffect = { status: "accepted" | "changed" | "held"; head: string };
+export type ReconcileOperationFeedback = {kind:"apply"|"merge";requestedHead:string;result:ReconcileEffect};
 export type ReconcileOperation = { kind: "apply"; edits: ReconcileEdit[] } | { kind: "merge"; decisions: ReconcileDecision[] };
 export type IntegrationResult = { status: "integrated" | "held"; head: string; reason: string };
 export type EvidenceRequest = { goal: string; questions: string[]; sources: { id: string; path: string }[] };
