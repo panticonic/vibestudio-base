@@ -5,5 +5,6 @@
   "stageUnit": "vibe-source48-official-five-sdk-20261126a",
   "stageFreshReproduction": "all5targets292filesPASS67.66s1.1GiB",
   "privateCorpusChanged": false,
-  "consumerStatus": "Actual Base/System focused consumer check pending; not claimed from pin metadata"
+  "consumerStatus": "44 Base controls and7 System serving controls PASS, including real NativeRecords/effectful HOF/realm; stale Recovery owner .ts expectation corrected to actual .nl declaration",
+  "consumerEvidence": "/home/werg/vibe-v48-release-ops/sdk-consumer-proof.json"
 }
