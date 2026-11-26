@@ -281,7 +281,6 @@ export type SkillMaintenanceReceipt = {
   disposition: "staged" | "stale" | "denied";
   paths: string[];
 };
-export type SkillMaintenanceOutcome = SkillMaintenanceReceipt | SkillMaintenanceDecision;
 
 export type PhoneFirstRunCard = { id: string; title: string; edition: "current" | "archive" };
 export type PhoneFirstRunAssignment = {

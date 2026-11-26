@@ -280,9 +280,9 @@
     "additionalArguments": {}
   },
   "skillMaintenance": {
-    "program": "skills/open-user-goal/maintainWorkspaceSkill.ts",
+    "program": "skills/open-user-goal/maintainWorkspaceSkill.nl",
     "callable": "maintainWorkspaceSkill",
-    "resultType": "SkillMaintenanceOutcome",
+    "resultType": "SkillMaintenanceFindings",
     "skill": "skillMaintenance",
     "parameterNames": [
       "goal"

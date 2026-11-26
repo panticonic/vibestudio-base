@@ -281,9 +281,9 @@ export default {
     "additionalArguments": {}
   },
   "skillMaintenance": {
-    "program": "skills/open-user-goal/maintainWorkspaceSkill.ts",
+    "program": "skills/open-user-goal/maintainWorkspaceSkill.nl",
     "callable": "maintainWorkspaceSkill",
-    "resultType": "SkillMaintenanceOutcome",
+    "resultType": "SkillMaintenanceFindings",
     "skill": "skillMaintenance",
     "parameterNames": [
       "goal"
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"a753e41e2a6557ab3e838af78b12e01e0adb53b8232d048a7344c6c526e46cba"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"6693817048d8a2c6a6492875c8773dc8f439db4f5a96a1273a3c6ef82544d13f"};
