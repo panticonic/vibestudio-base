@@ -8,3 +8,5 @@ export type WidthReceipt = Witness;
 export type WidthFinding = Finding;
 export type WidthHandoff = Handoff;
 export type LocalWidthOutcome = { finding: Finding; handoff: Handoff | null };
+
+export type LocalWidthInquiry = {survey: WidthSurvey; readiness: Readiness | null; finding: WidthFinding};

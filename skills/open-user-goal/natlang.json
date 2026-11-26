@@ -316,7 +316,8 @@
         "reviewLocalExecutionWidth/readiness"
       ],
       "types": [
-        "LocalWidthOutcome"
+        "LocalWidthOutcome",
+        "LocalWidthInquiry"
       ]
     },
     "compareLiveLocalInventory": {
