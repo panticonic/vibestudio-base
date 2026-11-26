@@ -659,7 +659,7 @@ it("compiles the semantic function library with its installed research skill and
     pdfIntakeRead: [],
     pdfLayoutRead: ["workOnEditorialPacket/reviewPacketSource/pdf/reviewPdfLayout.nl", "pdf/reviewPdfLayout.nl"],
     ownedPreviewPublication: ["publication/publishOwnedPreviewGoal.ts", "publication/publishOwnedPreviewGoal/deliverPreview.nl"],
-    publicationGoal: ["publication/workTowardPublicationGoal.ts"],
+    publicationGoal: ["publication/workTowardPublicationGoal/discoverPublicationContext.ts", "publication/workTowardPublicationGoal/bindPublicationContext.ts"],
     publicationRevision: ["publication/reviewPublicationRevision.nl"],
     websiteReadback: ["publication/preflightPublication.nl"],
     web: [

@@ -750,7 +750,7 @@
     "additionalArguments": {}
   },
   "unit-rollout": {
-    "program": "skills/open-unit-rollout/repairWorkspaceUnit.ts",
+    "program": "skills/open-unit-rollout/repairWorkspaceUnit.nl",
     "callable": "repairWorkspaceUnit",
     "resultType": "UnitRolloutReport",
     "skill": "unitRollout",
@@ -1020,7 +1020,7 @@
     "additionalArguments": {}
   },
   "publication": {
-    "program": "skills/publish-preflight/workTowardPublicationGoal.ts",
+    "program": "skills/publish-preflight/workTowardPublicationGoal.nl",
     "callable": "workTowardPublicationGoal",
     "resultType": "PublicationGoalReport",
     "skill": "publication",

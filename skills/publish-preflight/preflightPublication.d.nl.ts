@@ -128,6 +128,7 @@ type PublicationGoalBinding = {
   preflight: PublishPreflightRequest | null;
   revision: PublicationRevisionRequest | null;
 };
+type PublicationGoalEvidence = { preflight: PublishPreflightReport | null; revision: PublicationRevisionReport | null };
 type PublicationGoalReport = | {
       status: "reviewed";
       choice: PublicationGoalChoice;

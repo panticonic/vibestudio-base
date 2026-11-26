@@ -751,7 +751,7 @@ export default {
     "additionalArguments": {}
   },
   "unit-rollout": {
-    "program": "skills/open-unit-rollout/repairWorkspaceUnit.ts",
+    "program": "skills/open-unit-rollout/repairWorkspaceUnit.nl",
     "callable": "repairWorkspaceUnit",
     "resultType": "UnitRolloutReport",
     "skill": "unitRollout",
@@ -1021,7 +1021,7 @@ export default {
     "additionalArguments": {}
   },
   "publication": {
-    "program": "skills/publish-preflight/workTowardPublicationGoal.ts",
+    "program": "skills/publish-preflight/workTowardPublicationGoal.nl",
     "callable": "workTowardPublicationGoal",
     "resultType": "PublicationGoalReport",
     "skill": "publication",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"35221a7c1bbc37acf365149c6e5823f26ff04c1c190673d3db86ffcdd1c4d786"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"44e2c4306fc4a690c90598cc8043c1709102ffbb909558c6d07590b3ca271c5d"};
