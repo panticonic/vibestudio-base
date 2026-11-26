@@ -401,7 +401,7 @@ export default {
     "additionalArguments": {}
   },
   "installed-package": {
-    "program": "skills/open-user-goal/reviewInstalledPackage.ts",
+    "program": "skills/open-user-goal/reviewInstalledPackage.nl",
     "callable": "reviewInstalledPackage",
     "resultType": "InstalledPackageOutcome",
     "skill": "installedPackage",
@@ -531,7 +531,7 @@ export default {
     "additionalArguments": {}
   },
   "system-release": {
-    "program": "skills/open-user-goal/reviewSystemRelease.ts",
+    "program": "skills/open-user-goal/reviewSystemRelease.nl",
     "callable": "reviewSystemRelease",
     "resultType": "SystemReleaseOutcome",
     "skill": "systemRelease",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"fe257a9a798567339c40d81ec9d5e6744de8417df5f153c0fe62ced99c53919e"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"ead65d6c0bf24d6541d3cb65784c384912d2290e07113c1f0b6efdcb8652000c"};

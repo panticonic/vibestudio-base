@@ -487,6 +487,7 @@ export * from "./reviewPtyContinuity/contract.js";
 export * from "./reviewDevelopmentAudit/contract.js";
 export * from "./recoverContentArchive/contract.js";
 export * from "./reviewSystemRelease/contract.js";
+export type { ComparedRelease, EvaluatedReleaseCases, SystemReleaseInvestigation } from "./reviewSystemRelease/types.js";
 export type { PanelSourceMigrationOutcome } from "./migratePanelSource/types.js";
 export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
 export type { AgentRecoveryFindings } from "./recoverAgentCapability/types.js";

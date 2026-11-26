@@ -7,5 +7,6 @@ export type PackageObservation = Observation;
 export type PackageRestore = Restore;
 export type PackageDecision = Decision;
 export type PackageFinding = { decision: Decision; reason: string };
-export type InstalledPackageOutcome = { finding: PackageFinding; repair: Restore | null; verification: Verification | null };
+export type InstalledPackageOutcome = string;
+export type InstalledPackageInvestigation = { assignment: Assignment; observation: Observation; finding: PackageFinding };
 export type SuiteReviewReport = Verification;

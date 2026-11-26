@@ -572,6 +572,21 @@
         "BridgeInquiry",
         "BridgeResult"
       ]
+    },
+    "reviewInstalledPackage": {
+      "mounts": [
+        "reviewInstalledPackage/reviewVerification/nativeSuite"
+      ],
+      "types": [
+        "InstalledPackageOutcome",
+        "InstalledPackageInvestigation",
+        "PackageAssignment",
+        "PackageObservation",
+        "PackageFinding",
+        "PackageRestore",
+        "PackageDecision",
+        "SuiteReviewReport"
+      ]
     }
   },
   "targets": {
