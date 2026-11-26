@@ -541,7 +541,7 @@ export default {
     "additionalArguments": {}
   },
   "panel-source-migration": {
-    "program": "skills/open-user-goal/migratePanelSource.ts",
+    "program": "skills/open-user-goal/migratePanelSource.nl",
     "callable": "migratePanelSource",
     "resultType": "PanelSourceMigrationOutcome",
     "skill": "panelSourceMigration",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"ead65d6c0bf24d6541d3cb65784c384912d2290e07113c1f0b6efdcb8652000c"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"a753e41e2a6557ab3e838af78b12e01e0adb53b8232d048a7344c6c526e46cba"};
