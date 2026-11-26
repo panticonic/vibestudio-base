@@ -300,7 +300,7 @@
     "additionalArguments": {}
   },
   "desktopReadiness": {
-    "program": "skills/open-user-goal/reviewDesktopReadiness.ts",
+    "program": "skills/open-user-goal/reviewDesktopReadiness.nl",
     "callable": "reviewDesktopReadiness",
     "resultType": "DesktopReadinessFindings",
     "skill": "desktopReadiness",
@@ -440,7 +440,7 @@
     "additionalArguments": {}
   },
   "provenance-question": {
-    "program": "skills/open-user-goal/reviewRecordedQuestion.ts",
+    "program": "skills/open-user-goal/reviewRecordedQuestion.nl",
     "callable": "reviewRecordedQuestion",
     "resultType": "RecordedQuestionReport",
     "skill": "provenanceQuestion",
